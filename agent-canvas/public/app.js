@@ -345,6 +345,25 @@ function initTerminalIfNeeded() {
     cursorStyle: 'bar',
     scrollback: 5000,
     convertEol: false,
+    // macOS: Option 键作为 Meta（Claude Code 快捷键需要）
+    macOptionIsMeta: true,
+    macOptionClickForcesSelection: false,
+    // 允许浏览器粘贴事件穿透到 xterm
+    allowProposedApi: true,
+  });
+
+  // 点击终端区域立刻聚焦（确保 / 等按键不被浏览器截获）
+  document.getElementById('term-container').addEventListener('mousedown', () => {
+    activeTerm.focus();
+  });
+
+  // 焦点状态视觉反馈
+  activeTerm.onFocus(() => {
+    document.getElementById('term-container').style.outline = '1px solid rgba(124,58,237,0.5)';
+    document.getElementById('term-container').style.outlineOffset = '-1px';
+  });
+  activeTerm.onBlur(() => {
+    document.getElementById('term-container').style.outline = 'none';
   });
 
   activeFitAddon = new FitAddon.FitAddon();
@@ -390,6 +409,8 @@ async function openTerminalPanel(agentId) {
   document.getElementById('term-panel').classList.add('open');
 
   initTerminalIfNeeded();
+  // 立刻聚焦，让键盘输入直接进终端
+  activeTerm.focus();
 
   const switching = activeAgentId !== agentId;
   activeAgentId = agentId;
@@ -538,7 +559,16 @@ container.addEventListener('wheel', e => {
 
 container.addEventListener('contextmenu', e => { e.preventDefault(); openCtxMenu(e.clientX, e.clientY, null, null); });
 document.addEventListener('click',   e => { if (!e.target.closest('#ctx-menu')) closeCtxMenu(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeCtxMenu(); closeTerminalPanel(); } });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeCtxMenu();
+    // 终端有焦点时 Escape 不关面板（Claude Code 用 Esc 退出输入/命令模式）
+    const termFocused = termReady &&
+      document.getElementById('term-panel').classList.contains('open') &&
+      document.getElementById('term-container').contains(document.activeElement);
+    if (!termFocused) closeTerminalPanel();
+  }
+});
 
 // ════════════════════════════════════════════════════
 // HEADER BUTTONS

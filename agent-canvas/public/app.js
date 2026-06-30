@@ -6,8 +6,8 @@ let camera = { x: 80, y: 80, scale: 1 };
 let initialized = false;
 
 // Drag state
-let drag = null;        // { nodeId, startMX, startMY, startNX, startNY }
-let draggingId = null;  // id of node currently being dragged (skip WS position update)
+let drag = null;
+let draggingId = null;
 
 // Pan state
 let isPanning = false;
@@ -16,14 +16,20 @@ let panStart = { mx: 0, my: 0, cx: 0, cy: 0 };
 // Context menu state
 let ctxTarget = null;
 
-// Zoom hide timer
+// Timers
 let zoomHideTimer = null;
-
-// Camera debounce timer
 let camSaveTimer = null;
 
 // ════════════════════════════════════════════════════
-// API HELPER
+// TERMINAL STATE  (single shared xterm instance)
+// ════════════════════════════════════════════════════
+let activeTerm      = null;  // Terminal instance
+let activeFitAddon  = null;  // FitAddon instance
+let activeAgentId   = null;  // which agent is currently shown
+let termReady       = false; // whether term.open() has been called
+
+// ════════════════════════════════════════════════════
+// API
 // ════════════════════════════════════════════════════
 async function api(method, url, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
@@ -40,28 +46,29 @@ async function api(method, url, body) {
 let ws;
 function connectWS() {
   ws = new WebSocket(`ws://${location.host}`);
-
   ws.onopen  = () => console.log('[WS] connected');
   ws.onclose = () => { console.log('[WS] reconnecting…'); setTimeout(connectWS, 1500); };
   ws.onerror = () => ws.close();
 
   ws.onmessage = e => {
     const msg = JSON.parse(e.data);
-    if (msg.type !== 'state') return;
 
-    state = msg.payload;
+    if (msg.type === 'state') {
+      state = msg.payload;
+      if (!isPanning) { camera = { ...state.camera }; applyTransform(); }
+      renderAll();
+      if (state.rootDir && !initialized) { initialized = true; showApp(); }
 
-    // Accept camera from server only when not actively panning/zooming
-    if (!isPanning) {
-      camera = { ...state.camera };
-      applyTransform();
-    }
+      // Keep terminal header badge in sync
+      if (activeAgentId) {
+        const a = state.nodes.find(n => n.id === activeAgentId);
+        if (a) updateTermBadge(a);
+      }
 
-    renderAll();
-
-    if (state.rootDir && !initialized) {
-      initialized = true;
-      showApp();
+    } else if (msg.type === 'pty-data') {
+      if (activeTerm && msg.agentId === activeAgentId) {
+        activeTerm.write(msg.data);
+      }
     }
   };
 }
@@ -76,10 +83,7 @@ function applyTransform() {
 
 function screenToWorld(sx, sy) {
   const rect = document.getElementById('canvas-container').getBoundingClientRect();
-  return {
-    x: (sx - rect.left - camera.x) / camera.scale,
-    y: (sy - rect.top  - camera.y) / camera.scale
-  };
+  return { x: (sx - rect.left - camera.x) / camera.scale, y: (sy - rect.top - camera.y) / camera.scale };
 }
 
 function saveCameraDebounced() {
@@ -112,41 +116,25 @@ function renderAll() {
   const existingIds = new Set([...canvas.querySelectorAll('[data-id]')].map(el => el.dataset.id));
   const liveIds     = new Set(state.nodes.map(n => n.id));
 
-  // Remove stale DOM nodes
-  existingIds.forEach(id => {
-    if (!liveIds.has(id)) canvas.querySelector(`[data-id="${id}"]`)?.remove();
-  });
+  existingIds.forEach(id => { if (!liveIds.has(id)) canvas.querySelector(`[data-id="${id}"]`)?.remove(); });
 
-  // Workspaces first (z-index 1), agents on top (z-index 2)
   state.nodes.filter(n => n.type === 'workspace').forEach(renderWorkspace);
   state.nodes.filter(n => n.type === 'agent').forEach(renderAgent);
 }
 
-// ── Workspace ──────────────────────────────────────
 function renderWorkspace(node) {
   let el = document.querySelector(`[data-id="${node.id}"]`);
-  if (!el) {
-    el = buildWorkspaceEl(node);
-    document.getElementById('canvas').appendChild(el);
-  }
-  if (draggingId !== node.id) {
-    el.style.left = node.x + 'px';
-    el.style.top  = node.y + 'px';
-  }
-  el.style.width  = node.w + 'px';
-  el.style.height = node.h + 'px';
-
+  if (!el) { el = buildWorkspaceEl(node); document.getElementById('canvas').appendChild(el); }
+  if (draggingId !== node.id) { el.style.left = node.x + 'px'; el.style.top = node.y + 'px'; }
+  el.style.width = node.w + 'px'; el.style.height = node.h + 'px';
   const lbl = el.querySelector('.ws-name');
   if (lbl && lbl.tagName === 'SPAN') lbl.textContent = node.name;
 }
 
 function buildWorkspaceEl(node) {
   const el = document.createElement('div');
-  el.className    = 'workspace-node';
-  el.dataset.id   = node.id;
-  el.dataset.type = 'workspace';
+  el.className = 'workspace-node'; el.dataset.id = node.id; el.dataset.type = 'workspace';
   el.style.cssText = `left:${node.x}px;top:${node.y}px;width:${node.w}px;height:${node.h}px;z-index:1`;
-
   el.innerHTML = `
     <div class="node-header" data-drag>
       <div class="node-header-left">
@@ -158,47 +146,29 @@ function buildWorkspaceEl(node) {
         <button class="btn-icon delete-btn" title="删除">✕</button>
       </div>
     </div>
-    <div class="ws-body">
-      <span class="ws-hint">右键或点击 ＋ 在此工作区内新建 Agent</span>
-    </div>`;
-
+    <div class="ws-body"><span class="ws-hint">右键或点击 ＋ 新建 Agent</span></div>`;
   wireNodeEvents(el, node.id, 'workspace');
   return el;
 }
 
-// ── Agent ───────────────────────────────────────────
 function renderAgent(node) {
   let el = document.querySelector(`[data-id="${node.id}"]`);
-  if (!el) {
-    el = buildAgentEl(node);
-    document.getElementById('canvas').appendChild(el);
-  }
-  if (draggingId !== node.id) {
-    el.style.left = node.x + 'px';
-    el.style.top  = node.y + 'px';
-  }
+  if (!el) { el = buildAgentEl(node); document.getElementById('canvas').appendChild(el); }
+  if (draggingId !== node.id) { el.style.left = node.x + 'px'; el.style.top = node.y + 'px'; }
 
   const lbl = el.querySelector('.agent-name');
   if (lbl && lbl.tagName === 'SPAN') lbl.textContent = node.name;
-
   el.querySelector('.agent-dir').textContent = truncatePath(node.dir);
 
   const badge = el.querySelector('.status-badge');
   badge.className = 'status-badge ' + (node.launched ? 'badge-launched' : 'badge-not-launched');
   badge.textContent = node.launched ? '● 运行中' : '● 未启动';
-
-  const btn = el.querySelector('.agent-launch-btn');
-  btn.textContent = node.launched ? '↗ 重新在终端启动' : '▶ 启动 Agent';
-  btn.className   = 'agent-launch-btn' + (node.launched ? ' launched' : '');
 }
 
 function buildAgentEl(node) {
   const el = document.createElement('div');
-  el.className    = 'agent-node';
-  el.dataset.id   = node.id;
-  el.dataset.type = 'agent';
+  el.className = 'agent-node'; el.dataset.id = node.id; el.dataset.type = 'agent';
   el.style.cssText = `left:${node.x}px;top:${node.y}px;z-index:2`;
-
   el.innerHTML = `
     <div class="node-header" data-drag>
       <div class="node-header-left">
@@ -209,7 +179,7 @@ function buildAgentEl(node) {
         <button class="btn-icon delete-btn" title="删除">✕</button>
       </div>
     </div>
-    <div class="agent-body">
+    <div class="agent-body" data-open-agent="${node.id}">
       <div class="agent-dir">${escHtml(truncatePath(node.dir))}</div>
       <div class="agent-meta">
         <span class="model-badge">${escHtml(node.model)}</span>
@@ -217,73 +187,63 @@ function buildAgentEl(node) {
           ${node.launched ? '● 运行中' : '● 未启动'}
         </span>
       </div>
-      <button class="agent-launch-btn${node.launched ? ' launched' : ''}">
-        ${node.launched ? '↗ 重新在终端启动' : '▶ 启动 Agent'}
-      </button>
+      <div class="agent-click-hint">点击进入终端 →</div>
     </div>`;
-
   wireNodeEvents(el, node.id, 'agent');
   return el;
 }
 
 // ════════════════════════════════════════════════════
-// NODE EVENT WIRING
+// NODE EVENTS
 // ════════════════════════════════════════════════════
 function wireNodeEvents(el, nodeId, nodeType) {
   const header = el.querySelector('[data-drag]');
 
-  // ── Drag (header, not buttons) ───────────────────
+  // Drag via header
   header.addEventListener('mousedown', e => {
     if (e.target.closest('button')) return;
     e.stopPropagation();
     startDrag(e, nodeId);
   });
 
-  // ── Double-click to rename ───────────────────────
+  // Rename on double-click
   header.querySelector('.node-label').addEventListener('dblclick', e => {
     e.stopPropagation();
     beginRename(nodeId, e.currentTarget);
   });
 
-  // ── Delete button ────────────────────────────────
+  // Delete button
   el.querySelector('.delete-btn').addEventListener('click', e => {
     e.stopPropagation();
+    if (activeAgentId === nodeId) closeTerminalPanel();
     api('DELETE', `/api/node/${nodeId}`).catch(err => alert(err.message));
   });
 
-  // ── "+ Agent" button (workspace) ────────────────
+  // "+ Agent" button (workspace)
   const addBtn = el.querySelector('.add-agent-btn');
   if (addBtn) {
     addBtn.addEventListener('click', e => {
       e.stopPropagation();
       const ws = state.nodes.find(n => n.id === nodeId);
-      api('POST', '/api/agent', {
-        x: ws.x + 20, y: ws.y + 60, workspaceId: nodeId
-      }).catch(console.error);
+      api('POST', '/api/agent', { x: ws.x + 20, y: ws.y + 60, workspaceId: nodeId }).catch(console.error);
     });
   }
 
-  // ── Launch button (agent) ────────────────────────
-  const launchBtn = el.querySelector('.agent-launch-btn');
-  if (launchBtn) {
-    launchBtn.addEventListener('click', e => {
+  // Click agent body → open terminal
+  const body = el.querySelector('[data-open-agent]');
+  if (body) {
+    body.addEventListener('click', e => {
       e.stopPropagation();
-      launchBtn.disabled = true;
-      launchBtn.textContent = '启动中…';
-      api('POST', `/api/agent/${nodeId}/launch`)
-        .catch(err => alert('启动失败：' + err.message))
-        .finally(() => { launchBtn.disabled = false; });
+      openTerminalPanel(nodeId);
     });
   }
 
-  // ── Right-click context menu on node ────────────
+  // Right-click context menu
   el.addEventListener('contextmenu', e => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     openCtxMenu(e.clientX, e.clientY, nodeId, nodeType);
   });
 
-  // ── Stop propagation so canvas pan doesn't trigger
   el.addEventListener('mousedown', e => e.stopPropagation());
 }
 
@@ -294,37 +254,25 @@ function startDrag(e, nodeId) {
   const node = state.nodes.find(n => n.id === nodeId);
   if (!node) return;
   draggingId = nodeId;
-  drag = {
-    nodeId,
-    startMX: e.clientX, startMY: e.clientY,
-    startNX: node.x,    startNY: node.y
-  };
+  drag = { nodeId, startMX: e.clientX, startMY: e.clientY, startNX: node.x, startNY: node.y };
   document.addEventListener('mousemove', onDragMove, { passive: true });
-  document.addEventListener('mouseup',   onDragEnd);
+  document.addEventListener('mouseup', onDragEnd);
 }
 
 function onDragMove(e) {
   if (!drag) return;
   const dx = (e.clientX - drag.startMX) / camera.scale;
   const dy = (e.clientY - drag.startMY) / camera.scale;
-  const nx = drag.startNX + dx;
-  const ny = drag.startNY + dy;
-
-  // Move the node's DOM element immediately
+  const nx = drag.startNX + dx, ny = drag.startNY + dy;
   const el = document.querySelector(`[data-id="${drag.nodeId}"]`);
   if (el) { el.style.left = nx + 'px'; el.style.top = ny + 'px'; }
-
-  // Move workspace children visually too
   const node = state.nodes.find(n => n.id === drag.nodeId);
   if (node && node.type === 'workspace') {
     const ddx = nx - node.x, ddy = ny - node.y;
     state.nodes.forEach(n => {
       if (n.workspaceId === drag.nodeId) {
         const cel = document.querySelector(`[data-id="${n.id}"]`);
-        if (cel) {
-          cel.style.left = (n.x + ddx) + 'px';
-          cel.style.top  = (n.y + ddy) + 'px';
-        }
+        if (cel) { cel.style.left = (n.x + ddx) + 'px'; cel.style.top = (n.y + ddy) + 'px'; }
       }
     });
   }
@@ -334,16 +282,10 @@ function onDragEnd(e) {
   if (!drag) return;
   const dx = (e.clientX - drag.startMX) / camera.scale;
   const dy = (e.clientY - drag.startMY) / camera.scale;
-
-  api('PATCH', `/api/node/${drag.nodeId}`, {
-    x: drag.startNX + dx,
-    y: drag.startNY + dy
-  }).catch(console.error);
-
-  drag = null;
-  draggingId = null;
+  api('PATCH', `/api/node/${drag.nodeId}`, { x: drag.startNX + dx, y: drag.startNY + dy }).catch(console.error);
+  drag = null; draggingId = null;
   document.removeEventListener('mousemove', onDragMove);
-  document.removeEventListener('mouseup',   onDragEnd);
+  document.removeEventListener('mouseup', onDragEnd);
 }
 
 // ════════════════════════════════════════════════════
@@ -352,20 +294,15 @@ function onDragEnd(e) {
 function beginRename(nodeId, labelSpan) {
   const node = state.nodes.find(n => n.id === nodeId);
   if (!node) return;
-
   const input = document.createElement('input');
-  input.className = 'node-label-input';
-  input.value = node.name;
+  input.className = 'node-label-input'; input.value = node.name;
   labelSpan.replaceWith(input);
-  input.focus();
-  input.select();
+  input.focus(); input.select();
 
   function commit() {
     const newName = input.value.trim() || node.name;
-    // Restore span immediately (optimistic)
     const span = document.createElement('span');
-    span.className = labelSpan.className;
-    span.textContent = newName;
+    span.className = labelSpan.className; span.textContent = newName;
     input.replaceWith(span);
     span.addEventListener('dblclick', e => { e.stopPropagation(); beginRename(nodeId, span); });
     api('PATCH', `/api/node/${nodeId}`, { name: newName }).catch(console.error);
@@ -380,81 +317,183 @@ function beginRename(nodeId, labelSpan) {
 }
 
 // ════════════════════════════════════════════════════
+// TERMINAL PANEL
+// ════════════════════════════════════════════════════
+function initTerminalIfNeeded() {
+  if (termReady) return;
+  termReady = true;
+
+  activeTerm = new Terminal({
+    theme: {
+      background:        '#0d1117',
+      foreground:        '#e6edf3',
+      cursor:            '#a78bfa',
+      cursorAccent:      '#0d1117',
+      selectionBackground: 'rgba(124,58,237,0.25)',
+      black:        '#1c2230', brightBlack:   '#6e7681',
+      red:          '#ef4444', brightRed:     '#f87171',
+      green:        '#10b981', brightGreen:   '#34d399',
+      yellow:       '#f59e0b', brightYellow:  '#fcd34d',
+      blue:         '#3b82f6', brightBlue:    '#60a5fa',
+      magenta:      '#8b5cf6', brightMagenta: '#a78bfa',
+      cyan:         '#06b6d4', brightCyan:    '#22d3ee',
+      white:        '#e6edf3', brightWhite:   '#f0f6ff',
+    },
+    fontSize: 13,
+    fontFamily: '"Menlo", "Monaco", "Courier New", monospace',
+    cursorBlink: true,
+    cursorStyle: 'bar',
+    scrollback: 5000,
+    convertEol: false,
+  });
+
+  activeFitAddon = new FitAddon.FitAddon();
+  activeTerm.loadAddon(activeFitAddon);
+  activeTerm.open(document.getElementById('term-container'));
+
+  // User keystrokes → pty
+  activeTerm.onData(data => {
+    if (activeAgentId && ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'pty-input', agentId: activeAgentId, data }));
+    }
+  });
+
+  // Terminal DOM resize → notify pty
+  activeTerm.onResize(({ cols, rows }) => {
+    if (activeAgentId && ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'pty-resize', agentId: activeAgentId, cols, rows }));
+    }
+  });
+
+  // Refit when container resizes
+  new ResizeObserver(() => {
+    if (document.getElementById('term-panel').classList.contains('open')) {
+      try { activeFitAddon.fit(); } catch (_) {}
+    }
+  }).observe(document.getElementById('term-container'));
+}
+
+function updateTermBadge(agent) {
+  const badge = document.getElementById('tph-badge');
+  if (!badge) return;
+  badge.className = 'status-badge ' + (agent.launched ? 'badge-launched' : 'badge-not-launched');
+  badge.textContent = agent.launched ? '● 运行中' : '● 未启动';
+}
+
+async function openTerminalPanel(agentId) {
+  const agent = state.nodes.find(n => n.id === agentId);
+  if (!agent) return;
+
+  document.getElementById('tph-name').textContent = agent.name;
+  document.getElementById('tph-dir').textContent  = agent.dir;
+  updateTermBadge(agent);
+  document.getElementById('term-panel').classList.add('open');
+
+  initTerminalIfNeeded();
+
+  const switching = activeAgentId !== agentId;
+  activeAgentId = agentId;
+
+  if (switching) {
+    activeTerm.clear();
+    // Load server-side output history
+    try {
+      const { data } = await fetch(`/api/agent/${agentId}/pty-buffer`).then(r => r.json());
+      if (activeAgentId === agentId && data) activeTerm.write(data);
+    } catch (_) {}
+  }
+
+  // Fit after panel animation (0.22s)
+  setTimeout(() => {
+    try {
+      activeFitAddon.fit();
+      if (activeAgentId && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'pty-resize', agentId: activeAgentId, cols: activeTerm.cols, rows: activeTerm.rows }));
+      }
+    } catch (_) {}
+    activeTerm.focus();
+  }, 240);
+
+  // Auto-launch if agent not running
+  if (!agent.launched) {
+    activeTerm.write('\x1b[33m[启动 Agent…]\x1b[0m\r\n');
+    api('POST', `/api/agent/${agentId}/launch`).catch(err => {
+      if (activeAgentId === agentId) {
+        activeTerm.write(`\x1b[31m[启动失败: ${err.message}]\x1b[0m\r\n`);
+      }
+    });
+  }
+}
+
+function closeTerminalPanel() {
+  document.getElementById('term-panel').classList.remove('open');
+}
+
+// Terminal panel buttons
+document.getElementById('tp-close-btn').addEventListener('click', closeTerminalPanel);
+
+document.getElementById('tp-restart-btn').addEventListener('click', () => {
+  if (!activeAgentId) return;
+  activeTerm.clear();
+  activeTerm.write('\x1b[33m[重启 Agent…]\x1b[0m\r\n');
+  api('POST', `/api/agent/${activeAgentId}/launch`).catch(err => {
+    activeTerm.write(`\x1b[31m[重启失败: ${err.message}]\x1b[0m\r\n`);
+  });
+});
+
+// ════════════════════════════════════════════════════
 // CONTEXT MENU
 // ════════════════════════════════════════════════════
 function openCtxMenu(sx, sy, nodeId, nodeType) {
   const world = screenToWorld(sx, sy);
 
-  // Find if we're over a workspace (for canvas right-click)
-  let wsId = null;
-  if (nodeType === 'workspace') {
-    wsId = nodeId;
-  } else if (!nodeId) {
+  let wsId = nodeType === 'workspace' ? nodeId : null;
+  if (!nodeId) {
     state.nodes.filter(n => n.type === 'workspace').forEach(ws => {
-      if (world.x >= ws.x && world.x <= ws.x + ws.w &&
-          world.y >= ws.y && world.y <= ws.y + ws.h) {
-        wsId = ws.id;
-      }
+      if (world.x >= ws.x && world.x <= ws.x + ws.w && world.y >= ws.y && world.y <= ws.y + ws.h) wsId = ws.id;
     });
   }
 
   ctxTarget = { nodeId, nodeType, worldX: world.x, worldY: world.y, wsId };
 
-  // Show/hide items based on context
-  const hasNode = !!nodeId;
-  document.getElementById('ctx-rename').style.display   = hasNode ? '' : 'none';
-  document.getElementById('ctx-delete').style.display   = hasNode ? '' : 'none';
-  document.getElementById('ctx-sep-node').style.display = hasNode ? '' : 'none';
-
-  const agentInWsItem = document.querySelector('[data-action="new-agent-in-ws"]');
-  agentInWsItem.style.display = wsId ? '' : 'none';
+  const hasNode    = !!nodeId;
+  const isAgent    = nodeType === 'agent';
+  document.getElementById('ctx-rename').style.display        = hasNode ? '' : 'none';
+  document.getElementById('ctx-delete').style.display        = hasNode ? '' : 'none';
+  document.getElementById('ctx-sep-node').style.display      = hasNode ? '' : 'none';
+  document.getElementById('ctx-open-terminal').style.display = isAgent ? '' : 'none';
+  document.querySelector('[data-action="new-agent-in-ws"]').style.display = wsId ? '' : 'none';
 
   const menu = document.getElementById('ctx-menu');
-  // Position before showing to avoid flash
-  const W = window.innerWidth, H = window.innerHeight;
-  const mw = 195, mh = 170;
-  menu.style.left = (sx + mw > W ? sx - mw : sx) + 'px';
-  menu.style.top  = (sy + mh > H ? sy - mh : sy) + 'px';
+  const mw = 200, mh = 180;
+  menu.style.left = (sx + mw > window.innerWidth  ? sx - mw : sx) + 'px';
+  menu.style.top  = (sy + mh > window.innerHeight ? sy - mh : sy) + 'px';
   menu.style.display = 'block';
 }
 
-function closeCtxMenu() {
-  document.getElementById('ctx-menu').style.display = 'none';
-  ctxTarget = null;
-}
+function closeCtxMenu() { document.getElementById('ctx-menu').style.display = 'none'; ctxTarget = null; }
 
 document.getElementById('ctx-menu').addEventListener('click', e => {
   const li = e.target.closest('li[data-action]');
   if (!li || !ctxTarget) return;
-  const { action }    = li.dataset;
+  const { action } = li.dataset;
   const { nodeId, nodeType, worldX, worldY, wsId } = ctxTarget;
   closeCtxMenu();
 
   switch (action) {
     case 'new-workspace':
-      api('POST', '/api/workspace', { x: worldX, y: worldY }).catch(console.error);
-      break;
+      api('POST', '/api/workspace', { x: worldX, y: worldY }).catch(console.error); break;
     case 'new-agent':
-      api('POST', '/api/agent', { x: worldX, y: worldY, workspaceId: wsId }).catch(console.error);
-      break;
+      api('POST', '/api/agent', { x: worldX, y: worldY, workspaceId: wsId }).catch(console.error); break;
     case 'new-agent-in-ws': {
       const ws = state.nodes.find(n => n.id === wsId);
-      api('POST', '/api/agent', {
-        x: ws ? ws.x + 20 : worldX,
-        y: ws ? ws.y + 60 : worldY,
-        workspaceId: wsId
-      }).catch(console.error);
-      break;
+      api('POST', '/api/agent', { x: ws ? ws.x + 20 : worldX, y: ws ? ws.y + 60 : worldY, workspaceId: wsId }).catch(console.error); break;
     }
+    case 'open-terminal': if (nodeId) openTerminalPanel(nodeId); break;
     case 'rename':
-      if (nodeId) {
-        const lbl = document.querySelector(`[data-id="${nodeId}"] .node-label`);
-        if (lbl) beginRename(nodeId, lbl);
-      }
-      break;
+      if (nodeId) { const lbl = document.querySelector(`[data-id="${nodeId}"] .node-label`); if (lbl) beginRename(nodeId, lbl); } break;
     case 'delete':
-      if (nodeId) api('DELETE', `/api/node/${nodeId}`).catch(err => alert(err.message));
-      break;
+      if (nodeId) { if (activeAgentId === nodeId) closeTerminalPanel(); api('DELETE', `/api/node/${nodeId}`).catch(err => alert(err.message)); } break;
   }
 });
 
@@ -488,29 +527,18 @@ document.addEventListener('mouseup', () => {
 
 container.addEventListener('wheel', e => {
   e.preventDefault();
-  const rect   = container.getBoundingClientRect();
-  const mx     = e.clientX - rect.left;
-  const my     = e.clientY - rect.top;
-  const factor = Math.pow(1.001, -e.deltaY);
-  const ns     = Math.min(4, Math.max(0.08, camera.scale * factor));
-  camera.x     = mx - (mx - camera.x) * (ns / camera.scale);
-  camera.y     = my - (my - camera.y) * (ns / camera.scale);
+  const rect = container.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const ns = Math.min(4, Math.max(0.08, camera.scale * Math.pow(1.001, -e.deltaY)));
+  camera.x = mx - (mx - camera.x) * (ns / camera.scale);
+  camera.y = my - (my - camera.y) * (ns / camera.scale);
   camera.scale = ns;
-  applyTransform();
-  showZoomBadge();
-  saveCameraDebounced();
+  applyTransform(); showZoomBadge(); saveCameraDebounced();
 }, { passive: false });
 
-container.addEventListener('contextmenu', e => {
-  e.preventDefault();
-  openCtxMenu(e.clientX, e.clientY, null, null);
-});
-
-// Close menu on outside click or Escape
+container.addEventListener('contextmenu', e => { e.preventDefault(); openCtxMenu(e.clientX, e.clientY, null, null); });
 document.addEventListener('click',   e => { if (!e.target.closest('#ctx-menu')) closeCtxMenu(); });
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeCtxMenu();
-});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeCtxMenu(); closeTerminalPanel(); } });
 
 // ════════════════════════════════════════════════════
 // HEADER BUTTONS
@@ -544,15 +572,12 @@ document.getElementById('start-btn').addEventListener('click', async () => {
   const btn     = document.getElementById('start-btn');
   errEl.textContent = '';
   if (!rootDir) { errEl.textContent = '请输入目录路径'; return; }
-  btn.disabled = true;
-  btn.textContent = '正在初始化…';
+  btn.disabled = true; btn.textContent = '正在初始化…';
   try {
     await api('POST', '/api/init', { rootDir });
-    // showApp() will be triggered by WS broadcast
   } catch (err) {
     errEl.textContent = err.message;
-    btn.disabled = false;
-    btn.textContent = '进入画布 →';
+    btn.disabled = false; btn.textContent = '进入画布 →';
   }
 });
 
@@ -572,16 +597,11 @@ document.getElementById('browse-btn').addEventListener('click', () => {
 function truncatePath(p) {
   if (!p) return '';
   const parts = p.replace(/\\/g, '/').split('/').filter(Boolean);
-  if (parts.length <= 3) return p;
-  return '…/' + parts.slice(-2).join('/');
+  return parts.length <= 3 ? p : '…/' + parts.slice(-2).join('/');
 }
 
 function escHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ════════════════════════════════════════════════════

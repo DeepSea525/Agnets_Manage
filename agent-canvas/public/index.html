@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agent Canvas</title>
+  <!-- xterm.js -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -20,7 +24,7 @@
           <input type="text" id="root-dir-input"
             placeholder="/Users/you/projects/my-project"
             autocomplete="off" spellcheck="false">
-          <button id="browse-btn" title="Browse">📂</button>
+          <button id="browse-btn" title="输入路径">📂</button>
         </div>
         <span class="init-hint">Canvas 状态将保存到该目录下的 canvas-state.json</span>
       </div>
@@ -34,9 +38,9 @@
     <span class="header-logo">⬡ <span>Agent Canvas</span></span>
     <span id="root-path-display"></span>
     <div class="header-actions">
-      <button class="header-btn" id="btn-new-workspace" title="新建工作区">＋ 工作区</button>
-      <button class="header-btn" id="btn-new-agent" title="新建 Agent">＋ Agent</button>
-      <button class="header-btn header-btn-ghost" id="btn-reset-view" title="重置视图">⌖ 重置视图</button>
+      <button class="header-btn" id="btn-new-workspace">＋ 工作区</button>
+      <button class="header-btn" id="btn-new-agent">＋ Agent</button>
+      <button class="header-btn header-btn-ghost" id="btn-reset-view">⌖ 重置视图</button>
     </div>
   </div>
 
@@ -45,12 +49,32 @@
     <div id="canvas"></div>
   </div>
 
+  <!-- ── Terminal panel (right slide-in) ── -->
+  <div id="term-panel">
+    <div id="term-panel-header">
+      <div class="tph-left">
+        <span class="tph-icon">🤖</span>
+        <div class="tph-info">
+          <span id="tph-name">Agent</span>
+          <span id="tph-dir"></span>
+        </div>
+        <span id="tph-badge" class="status-badge badge-not-launched">● 未启动</span>
+      </div>
+      <div class="tph-right">
+        <button class="tp-btn" id="tp-restart-btn" title="重启 Agent">↺ 重启</button>
+        <button class="tp-btn tp-btn-close" id="tp-close-btn" title="关闭">✕</button>
+      </div>
+    </div>
+    <div id="term-container"></div>
+  </div>
+
   <!-- ── Context menu ── -->
   <ul id="ctx-menu">
     <li data-action="new-workspace">📁 新建工作区</li>
     <li data-action="new-agent">🤖 新建 Agent</li>
-    <li class="ctx-sep" data-action="new-agent-in-ws" style="display:none">🤖 在此工作区新建 Agent</li>
-    <li class="ctx-sep" style="display:none" id="ctx-sep-node"></li>
+    <li data-action="new-agent-in-ws" style="display:none" class="ctx-sep">🤖 在此工作区新建 Agent</li>
+    <li id="ctx-sep-node" class="ctx-sep" style="display:none"></li>
+    <li data-action="open-terminal" id="ctx-open-terminal" style="display:none">⌨️ 打开终端</li>
     <li data-action="rename" id="ctx-rename" style="display:none">✏️ 重命名</li>
     <li data-action="delete" id="ctx-delete" class="ctx-danger" style="display:none">🗑 删除</li>
   </ul>
@@ -59,9 +83,7 @@
   <div id="zoom-indicator"></div>
 
   <!-- ── Help hint ── -->
-  <div id="help-hint">
-    拖拽平移 · 滚轮缩放 · 右键新建
-  </div>
+  <div id="help-hint">拖拽平移 · 滚轮缩放 · 右键新建 · 点击 Agent 卡片进入终端</div>
 
   <script src="app.js"></script>
 </body>

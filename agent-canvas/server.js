@@ -65,12 +65,20 @@ function spawnPty(node) {
   killPty(node.id);
   ptyBufs.set(node.id, ''); // fresh buffer
 
-  const p = pty.spawn(SHELL, ['-c', AGENT_COMMAND], {
+  // Spawn a login-interactive shell so ~/.zshrc / PATH are fully loaded,
+  // then write the agent command once the shell prompt is ready.
+  const shellBin = SHELL.startsWith('/') ? SHELL : '/bin/zsh';
+  const p = pty.spawn(shellBin, ['-l', '-i'], {
     name: 'xterm-256color',
     cols: 220, rows: 50,
     cwd: node.dir,
-    env: { ...process.env, TERM: 'xterm-256color' }
+    env: { ...process.env, TERM: 'xterm-256color', LANG: process.env.LANG || 'en_US.UTF-8' }
   });
+
+  // Give the shell ~400 ms to finish initializing, then run the agent command
+  setTimeout(() => {
+    if (ptys.has(node.id)) p.write(AGENT_COMMAND + '\r');
+  }, 400);
 
   ptys.set(node.id, p);
 

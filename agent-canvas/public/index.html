@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Canvas</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ── Init overlay ── -->
+  <div id="init-overlay">
+    <div class="init-card">
+      <div class="init-logo">⬡</div>
+      <h1>Agent Canvas</h1>
+      <p>无限画布 · 多 Agent 协作管理</p>
+      <div class="init-field">
+        <label>选择工作目录</label>
+        <div class="init-input-row">
+          <input type="text" id="root-dir-input"
+            placeholder="/Users/you/projects/my-project"
+            autocomplete="off" spellcheck="false">
+          <button id="browse-btn" title="Browse">📂</button>
+        </div>
+        <span class="init-hint">Canvas 状态将保存到该目录下的 canvas-state.json</span>
+      </div>
+      <button id="start-btn">进入画布 →</button>
+      <div id="init-error" class="init-error"></div>
+    </div>
+  </div>
+
+  <!-- ── Header ── -->
+  <div id="header">
+    <span class="header-logo">⬡ <span>Agent Canvas</span></span>
+    <span id="root-path-display"></span>
+    <div class="header-actions">
+      <button class="header-btn" id="btn-new-workspace" title="新建工作区">＋ 工作区</button>
+      <button class="header-btn" id="btn-new-agent" title="新建 Agent">＋ Agent</button>
+      <button class="header-btn header-btn-ghost" id="btn-reset-view" title="重置视图">⌖ 重置视图</button>
+    </div>
+  </div>
+
+  <!-- ── Canvas ── -->
+  <div id="canvas-container">
+    <div id="canvas"></div>
+  </div>
+
+  <!-- ── Context menu ── -->
+  <ul id="ctx-menu">
+    <li data-action="new-workspace">📁 新建工作区</li>
+    <li data-action="new-agent">🤖 新建 Agent</li>
+    <li class="ctx-sep" data-action="new-agent-in-ws" style="display:none">🤖 在此工作区新建 Agent</li>
+    <li class="ctx-sep" style="display:none" id="ctx-sep-node"></li>
+    <li data-action="rename" id="ctx-rename" style="display:none">✏️ 重命名</li>
+    <li data-action="delete" id="ctx-delete" class="ctx-danger" style="display:none">🗑 删除</li>
+  </ul>
+
+  <!-- ── Zoom indicator ── -->
+  <div id="zoom-indicator"></div>
+
+  <!-- ── Help hint ── -->
+  <div id="help-hint">
+    拖拽平移 · 滚轮缩放 · 右键新建
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

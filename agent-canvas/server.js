@@ -219,6 +219,19 @@ app.patch('/api/camera', (req, res) => {
 
 app.get('/api/state', (req, res) => res.json(state));
 
+// Open native macOS Finder folder picker
+app.get('/api/pick-folder', (req, res) => {
+  try {
+    const chosen = execSync(
+      `osascript -e 'POSIX path of (choose folder with prompt "选择工作目录")'`,
+      { timeout: 60000 }
+    ).toString().trim();
+    res.json({ path: chosen });
+  } catch (_) {
+    res.json({ path: null }); // user cancelled
+  }
+});
+
 // ─── Start ─────────────────────────────────────────────────────
 const PORT = 3000;
 server.listen(PORT, () => {

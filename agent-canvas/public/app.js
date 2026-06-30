@@ -585,10 +585,16 @@ document.getElementById('root-dir-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('start-btn').click();
 });
 
-document.getElementById('browse-btn').addEventListener('click', () => {
-  const cur = document.getElementById('root-dir-input').value;
-  const p = prompt('输入工作目录的完整路径：', cur || '/Users/');
-  if (p !== null) document.getElementById('root-dir-input').value = p.trim();
+document.getElementById('browse-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('browse-btn');
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const { path } = await fetch('/api/pick-folder').then(r => r.json());
+    if (path) document.getElementById('root-dir-input').value = path;
+  } catch (_) {}
+  btn.disabled = false;
+  btn.textContent = '📂';
 });
 
 // ════════════════════════════════════════════════════

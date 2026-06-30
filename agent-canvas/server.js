@@ -38,10 +38,19 @@ function debouncedSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveS
 function loadState(rootDir) {
   const file = path.join(rootDir, 'canvas-state.json');
   if (fs.existsSync(file)) {
-    try { state = { ...JSON.parse(fs.readFileSync(file, 'utf8')), rootDir }; return; }
-    catch (_) {}
+    try { state = { ...JSON.parse(fs.readFileSync(file, 'utf8')), rootDir }; }
+    catch (_) { state = { rootDir, nodes: [], camera: { x: 80, y: 80, scale: 1 } }; }
+  } else {
+    state = { rootDir, nodes: [], camera: { x: 80, y: 80, scale: 1 } };
   }
-  state = { rootDir, nodes: [], camera: { x: 80, y: 80, scale: 1 } };
+  // Backward-compat: ensure project consensus + per-workspace consensus fields
+  if (!state.projectConsensus) state.projectConsensus = { claudeMd: '', skills: [] };
+  state.nodes.forEach(n => {
+    if (n.type === 'workspace') {
+      if (n.claudeMd == null) n.claudeMd = '';
+      if (!Array.isArray(n.skills)) n.skills = [];
+    }
+  });
 }
 
 // ─── Broadcast helpers ─────────────────────────────────────────
@@ -201,7 +210,7 @@ app.patch('/api/node/:id', (req, res) => {
     } catch (e) { return res.status(500).json({ error: 'Rename failed: ' + e.message }); }
   }
 
-  ['x','y','w','h','name','launched'].forEach(k => { if (req.body[k] !== undefined) node[k] = req.body[k]; });
+  ['x','y','w','h','name','launched','claudeMd','skills'].forEach(k => { if (req.body[k] !== undefined) node[k] = req.body[k]; });
   debouncedSave(); broadcastState(); res.json(node);
 });
 
@@ -215,6 +224,15 @@ app.delete('/api/node/:id', (req, res) => {
     killPty(node.id);
     state.nodes = state.nodes.filter(n => n.id !== req.params.id);
   }
+  debouncedSave(); broadcastState(); res.json({ ok: true });
+});
+
+// Project-level consensus (CLAUDE.md + skills)
+app.patch('/api/consensus/project', (req, res) => {
+  if (!state.rootDir) return res.status(400).json({ error: 'Not initialized' });
+  if (!state.projectConsensus) state.projectConsensus = { claudeMd: '', skills: [] };
+  if (typeof req.body.claudeMd === 'string') state.projectConsensus.claudeMd = req.body.claudeMd;
+  if (Array.isArray(req.body.skills)) state.projectConsensus.skills = req.body.skills;
   debouncedSave(); broadcastState(); res.json({ ok: true });
 });
 

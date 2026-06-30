@@ -65,6 +65,9 @@ function connectWS() {
         if (a) updateTermBadge(a);
       }
 
+      // Consensus panel live sync
+      syncConsensusFromState();
+
     } else if (msg.type === 'pty-data') {
       if (activeTerm && msg.agentId === activeAgentId) {
         activeTerm.write(msg.data);
@@ -638,6 +641,209 @@ function truncatePath(p) {
 
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ════════════════════════════════════════════════════
+// CONSENSUS PANEL (共识管理: 项目级 / 工作区级 CLAUDE.md + skills)
+// ════════════════════════════════════════════════════
+let cnsScope = 'project';   // 'project' | 'workspace'
+let cnsWsId   = null;       // workspace id when scope === 'workspace'
+let cnsOpen   = false;
+let cnsSaveTimer = null;
+
+function consensusData() {
+  if (cnsScope === 'project') {
+    if (!state.projectConsensus) state.projectConsensus = { claudeMd: '', skills: [] };
+    return state.projectConsensus;
+  }
+  const ws = state.nodes.find(n => n.id === cnsWsId && n.type === 'workspace');
+  if (!ws) return null;
+  if (ws.claudeMd == null) ws.claudeMd = '';
+  if (!Array.isArray(ws.skills)) ws.skills = [];
+  return ws;
+}
+
+function openConsensusPanel() {
+  cnsOpen = true;
+  document.getElementById('consensus-panel').classList.add('open');
+  renderCnsTree();
+  renderCnsEditor();
+}
+function closeConsensusPanel() {
+  cnsOpen = false;
+  document.getElementById('consensus-panel').classList.remove('open');
+}
+document.getElementById('btn-consensus').addEventListener('click', openConsensusPanel);
+document.getElementById('cns-close-btn').addEventListener('click', closeConsensusPanel);
+
+function renderCnsTree() {
+  const tree = document.getElementById('cns-tree');
+  const workspaces = state.nodes.filter(n => n.type === 'workspace');
+  const rootName = (state.rootDir || '项目').replace(/\\/g,'/').split('/').filter(Boolean).pop() || '项目';
+
+  let html = '<div class="cns-tree-section">层级</div>';
+  html += `<div class="cns-tree-item ${cnsScope==='project'?'active':''}" data-scope="project">
+    <span class="cns-tree-icon">📁</span>
+    <span class="cns-tree-name">${escHtml(rootName)}</span>
+    <span class="cns-tree-meta">项目级</span>
+  </div>`;
+
+  if (workspaces.length) {
+    html += '<div class="cns-tree-section">工作区</div>';
+    workspaces.forEach(ws => {
+      html += `<div class="cns-tree-item ${cnsScope==='workspace'&&cnsWsId===ws.id?'active':''}" data-scope="workspace" data-id="${ws.id}">
+        <span class="cns-tree-icon">🗂</span>
+        <span class="cns-tree-name">${escHtml(ws.name)}</span>
+        <span class="cns-tree-meta">${(ws.skills||[]).length} skill</span>
+      </div>`;
+    });
+  }
+
+  tree.innerHTML = html;
+  tree.querySelectorAll('.cns-tree-item').forEach(el => {
+    el.addEventListener('click', () => {
+      cnsScope = el.dataset.scope;
+      cnsWsId = el.dataset.id || null;
+      renderCnsTree();
+      renderCnsEditor();
+    });
+  });
+}
+
+function renderCnsEditor() {
+  const editor = document.getElementById('cns-editor');
+  const data = consensusData();
+  if (!data) {
+    editor.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text3);font-size:13px">该工作区已不存在</div>';
+    return;
+  }
+  const scopeLabel = cnsScope === 'project'
+    ? `项目级 <b>${escHtml((state.rootDir||'').replace(/\\/g,'/').split('/').filter(Boolean).pop()||'项目')}</b> · 对所有 Agent 生效`
+    : `工作区级 <b>${escHtml(state.nodes.find(n=>n.id===cnsWsId)?.name||'')}</b> · 对该工作区内 Agent 生效`;
+
+  const skills = Array.isArray(data.skills) ? data.skills : [];
+  editor.innerHTML = `
+    <div class="cns-scope-label">${scopeLabel}</div>
+    <div class="cns-section">
+      <div class="cns-section-title">CLAUDE.md <span class="cns-save-hint">共识与约束</span></div>
+      <textarea class="cns-textarea" id="cns-claudemd" placeholder="# 项目/工作区共识&#10;&#10;在这里沉淀该层级的背景、规范、字段约定、目录结构、边界等共识...">${escHtml(data.claudeMd||'')}</textarea>
+    </div>
+    <div class="cns-section">
+      <div class="cns-section-title">Skills / 工具箱 <span class="cns-save-hint">${skills.length} 个</span></div>
+      <div id="cns-skills"></div>
+      <button class="cns-add-skill" id="cns-add-skill">+ 新增 Skill</button>
+    </div>`;
+
+  renderCnsSkills(skills);
+  // CLAUDE.md 自动保存
+  document.getElementById('cns-claudemd').addEventListener('input', e => {
+    data.claudeMd = e.target.value;
+    scheduleCnsSave();
+  });
+  document.getElementById('cns-add-skill').addEventListener('click', () => {
+    if (!Array.isArray(data.skills)) data.skills = [];
+    data.skills.push({ id: crypto.randomUUID(), name: 'new-skill', description: '', content: '' });
+    renderCnsSkills(data.skills);
+    scheduleCnsSave();
+  });
+}
+
+function renderCnsSkills(skills) {
+  const wrap = document.getElementById('cns-skills');
+  if (!wrap) return;
+  if (!skills.length) {
+    wrap.innerHTML = '<div style="padding:10px 0;font-size:12px;color:var(--text3)">暂无 skill，点击下方新增。</div>';
+    return;
+  }
+  wrap.innerHTML = skills.map((s, i) => `
+    <div class="cns-skill-card" data-i="${i}">
+      <div class="cns-skill-head">
+        <span class="cns-skill-chev">▶</span>
+        <span class="cns-skill-name">${escHtml(s.name||'(未命名)')}</span>
+        <span class="cns-skill-desc-tag">${escHtml(s.description||'')}</span>
+        <button class="cns-skill-del" data-del="${i}" title="删除">✕</button>
+      </div>
+      <div class="cns-skill-body">
+        <div class="cns-field">
+          <div class="cns-field-label">名称 (目录名)</div>
+          <input class="cns-input mono" data-field="name" data-i="${i}" value="${escHtml(s.name||'')}" placeholder="image-review">
+        </div>
+        <div class="cns-field">
+          <div class="cns-field-label">一句话描述</div>
+          <input class="cns-input" data-field="description" data-i="${i}" value="${escHtml(s.description||'')}" placeholder="这个 skill 做什么">
+        </div>
+        <div class="cns-field">
+          <div class="cns-field-label">SKILL.md 正文</div>
+          <textarea class="cns-textarea" data-field="content" data-i="${i}" placeholder="---&#10;name: ...&#10;description: ...&#10;---&#10;&#10;skill 正文内容...">${escHtml(s.content||'')}</textarea>
+        </div>
+      </div>
+    </div>`).join('');
+
+  // 折叠/展开
+  wrap.querySelectorAll('.cns-skill-head').forEach(head => {
+    head.addEventListener('click', e => {
+      if (e.target.closest('.cns-skill-del')) return;
+      head.parentElement.classList.toggle('open');
+    });
+  });
+  // 删除
+  wrap.querySelectorAll('.cns-skill-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = +btn.dataset.del;
+      const data = consensusData();
+      data.skills.splice(i, 1);
+      renderCnsSkills(data.skills);
+      renderCnsTree(); // 更新计数
+      scheduleCnsSave();
+    });
+  });
+  // 编辑字段
+  wrap.querySelectorAll('[data-field]').forEach(el => {
+    el.addEventListener('input', () => {
+      const i = +el.dataset.i;
+      const field = el.dataset.field;
+      const data = consensusData();
+      if (data.skills[i]) {
+        data.skills[i][field] = el.value;
+        if (field === 'name' || field === 'description') {
+          // 更新卡片头部显示
+          const card = wrap.querySelector(`.cns-skill-card[data-i="${i}"]`);
+          if (card) {
+            card.querySelector('.cns-skill-name').textContent = data.skills[i].name || '(未命名)';
+            card.querySelector('.cns-skill-desc-tag').textContent = data.skills[i].description || '';
+          }
+        }
+        scheduleCnsSave();
+      }
+    });
+  });
+}
+
+function scheduleCnsSave() {
+  clearTimeout(cnsSaveTimer);
+  cnsSaveTimer = setTimeout(saveConsensus, 500);
+}
+
+function saveConsensus() {
+  const data = consensusData();
+  if (!data) return;
+  if (cnsScope === 'project') {
+    api('PATCH', '/api/consensus/project', { claudeMd: data.claudeMd, skills: data.skills }).catch(console.error);
+  } else {
+    api('PATCH', `/api/node/${cnsWsId}`, { claudeMd: data.claudeMd, skills: data.skills }).catch(console.error);
+  }
+}
+
+// 当 WebSocket 推送新 state 且抽屉打开时,刷新左侧树与当前编辑区
+function syncConsensusFromState() {
+  if (!cnsOpen) return;
+  // 记录当前焦点元素以便恢复
+  renderCnsTree();
+  // 仅在非编辑态时刷新编辑区,避免覆盖用户正在输入的内容
+  const active = document.activeElement;
+  if (!active || !active.closest('#cns-editor')) {
+    renderCnsEditor();
+  }
 }
 
 // ════════════════════════════════════════════════════

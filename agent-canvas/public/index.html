@@ -36,8 +36,13 @@
   <!-- ── Header ── -->
   <div id="header">
     <span class="header-logo">⬡ <span>Agent Canvas</span></span>
+    <div class="mode-tabs">
+      <a class="mode-tab active" href="/">真实</a>
+      <a class="mode-tab" href="/mock">Mock</a>
+    </div>
     <span id="root-path-display"></span>
     <div class="header-actions">
+      <button class="header-btn" id="btn-consensus">⚙ 共识管理</button>
       <button class="header-btn" id="btn-new-workspace">＋ 工作区</button>
       <button class="header-btn" id="btn-new-agent">＋ Agent</button>
       <button class="header-btn header-btn-ghost" id="btn-reset-view">⌖ 重置视图</button>
@@ -66,6 +71,19 @@
       </div>
     </div>
     <div id="term-container"></div>
+  </div>
+
+  <!-- ── Consensus panel (共识管理抽屉) ── -->
+  <div id="consensus-panel">
+    <div class="cns-header">
+      <span class="cns-title">⚙ 共识管理</span>
+      <span class="cns-save-hint">编辑自动保存</span>
+      <button class="tp-btn tp-btn-close" id="cns-close-btn" title="关闭">✕</button>
+    </div>
+    <div class="cns-body">
+      <div class="cns-tree" id="cns-tree"></div>
+      <div class="cns-editor" id="cns-editor"></div>
+    </div>
   </div>
 
   <!-- ── Context menu ── -->

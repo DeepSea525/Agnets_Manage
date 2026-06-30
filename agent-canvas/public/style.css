@@ -426,3 +426,172 @@ body {
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── Mode tabs (真实 / Mock, 两页共用) ── */
+.mode-tabs {
+  display: flex;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 2px;
+  gap: 2px;
+}
+.mode-tab {
+  padding: 4px 14px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text2);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.mode-tab:hover { color: var(--text); }
+.mode-tab.active { background: var(--accent); color: #fff; }
+
+/* ── Consensus panel (共识管理抽屉) ── */
+#consensus-panel {
+  position: fixed;
+  top: 52px; right: 0; bottom: 0;
+  width: 760px;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 320;
+  transform: translateX(100%);
+  transition: transform 0.22s cubic-bezier(0.4,0,0.2,1);
+  box-shadow: -8px 0 32px rgba(0,0,0,0.5);
+}
+#consensus-panel.open { transform: translateX(0); }
+.cns-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 16px; height: 48px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.cns-header .cns-title { font-size: 14px; font-weight: 600; flex: 1; }
+.cns-body { flex: 1; display: flex; overflow: hidden; }
+/* 左侧层级树 */
+.cns-tree {
+  width: 210px; flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
+  padding: 8px;
+}
+.cns-tree-section {
+  font-size: 10.5px; font-weight: 600; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.6px;
+  padding: 10px 8px 4px;
+}
+.cns-tree-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cns-tree-item:hover { background: var(--surface2); }
+.cns-tree-item.active { background: var(--accent); color: #fff; }
+.cns-tree-item.active .cns-tree-meta { color: rgba(255,255,255,0.7); }
+.cns-tree-icon { flex-shrink: 0; }
+.cns-tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.cns-tree-meta { font-size: 10.5px; color: var(--text3); flex-shrink: 0; }
+.cns-tree-empty { padding: 16px 10px; font-size: 11.5px; color: var(--text3); line-height: 1.6; }
+
+/* 右侧编辑区 */
+.cns-editor { flex: 1; overflow-y: auto; padding: 18px 20px; }
+.cns-scope-label {
+  font-size: 12px; color: var(--text2);
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.cns-scope-label b { color: var(--text); }
+.cns-section { margin-bottom: 22px; }
+.cns-section-title {
+  font-size: 11px; font-weight: 600; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.8px;
+  margin-bottom: 8px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.cns-textarea {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 12.5px;
+  font-family: 'Menlo', 'Monaco', monospace;
+  resize: vertical;
+  min-height: 160px;
+  outline: none;
+  line-height: 1.6;
+}
+.cns-textarea:focus { border-color: var(--accent); }
+.cns-textarea::placeholder { color: var(--text3); }
+
+/* skill 卡片 */
+.cns-skill-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.cns-skill-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.cns-skill-head:hover { background: var(--surface2); }
+.cns-skill-chev { color: var(--text3); font-size: 10px; transition: transform 0.15s; flex-shrink: 0; }
+.cns-skill-card.open .cns-skill-chev { transform: rotate(90deg); }
+.cns-skill-name { font-size: 13px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cns-skill-desc-tag { font-size: 11px; color: var(--text3); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cns-skill-del {
+  width: 22px; height: 22px; border-radius: 5px; border: none;
+  background: transparent; color: var(--text3); cursor: pointer; font-size: 12px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.cns-skill-del:hover { background: rgba(239,68,68,0.15); color: var(--red); }
+.cns-skill-body { display: none; padding: 0 12px 12px; }
+.cns-skill-card.open .cns-skill-body { display: block; }
+.cns-field { margin-bottom: 8px; }
+.cns-field-label { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+.cns-input {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+  font-family: inherit;
+}
+.cns-input:focus { border-color: var(--accent); }
+.cns-input.mono { font-family: 'Menlo', monospace; font-size: 12px; }
+.cns-add-skill {
+  width: 100%;
+  padding: 9px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text2);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.cns-add-skill:hover { border-color: var(--accent); color: var(--accent-l); }
+.cns-save-hint { font-size: 11px; color: var(--text3); font-weight: 400; }

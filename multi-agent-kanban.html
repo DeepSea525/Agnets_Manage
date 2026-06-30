@@ -1,0 +1,1586 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Agent 协作管理台</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface2: #1c2230;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text2: #8b949e;
+  --text3: #6e7681;
+  --accent: #7c3aed;
+  --accent-light: #a78bfa;
+  --green: #10b981;
+  --blue: #3b82f6;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --purple: #8b5cf6;
+  --radius: 8px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+/* ── Header ── */
+#header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 56px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+.logo { font-size: 15px; font-weight: 700; color: var(--accent-light); letter-spacing: -0.3px; white-space: nowrap; }
+.logo span { color: var(--text2); font-weight: 400; }
+.phase-nav { display: flex; gap: 4px; flex: 1; }
+.phase-tab {
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.phase-tab:hover { color: var(--text); background: var(--surface2); }
+.phase-tab.active { background: var(--accent); color: #fff; }
+.phase-tab .step-num {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  font-size: 11px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 600;
+}
+.phase-tab .step-check { color: var(--green); font-size: 14px; }
+.header-right { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.project-badge {
+  background: rgba(124,58,237,0.15);
+  border: 1px solid rgba(124,58,237,0.3);
+  color: var(--accent-light);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+/* ── Main layout ── */
+#main { flex: 1; overflow: hidden; position: relative; }
+.phase { display: none; height: 100%; }
+.phase.active { display: flex; flex-direction: column; }
+
+/* ══════════════════════════════════════
+   PHASE 1 - Chat
+══════════════════════════════════════ */
+#phase-chat { flex-direction: row; }
+.chat-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  max-width: 640px;
+}
+.chat-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.agent-avatar {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.chat-header .agent-info .name { font-size: 14px; font-weight: 600; }
+.chat-header .agent-info .role { font-size: 12px; color: var(--text2); }
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.msg { display: flex; gap: 10px; max-width: 520px; }
+.msg.user { align-self: flex-end; flex-direction: row-reverse; }
+.msg-avatar {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.msg-bubble {
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.msg.user .msg-bubble { background: var(--accent); color: #fff; border-radius: 10px 2px 10px 10px; }
+.msg.agent .msg-bubble { background: var(--surface2); border: 1px solid var(--border); border-radius: 2px 10px 10px 10px; }
+.msg-bubble p { margin-bottom: 6px; }
+.msg-bubble p:last-child { margin-bottom: 0; }
+.msg-bubble ul { padding-left: 16px; margin-top: 6px; }
+.msg-bubble li { margin-bottom: 4px; }
+.msg-bubble code { background: rgba(255,255,255,0.1); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+.msg-time { font-size: 11px; color: var(--text3); margin-top: 4px; align-self: flex-end; }
+.typing-indicator { display: flex; gap: 4px; padding: 8px 14px; }
+.typing-indicator span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text3);
+  animation: bounce 1.2s infinite;
+}
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
+.chat-input-area {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chat-input-row { display: flex; gap: 8px; }
+.chat-input {
+  flex: 1;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--text);
+  font-size: 13.5px;
+  resize: none;
+  outline: none;
+  font-family: inherit;
+  min-height: 42px;
+  max-height: 120px;
+}
+.chat-input:focus { border-color: var(--accent); }
+.btn {
+  padding: 8px 16px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+  display: flex; align-items: center; gap: 6px;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: #6d28d9; }
+.btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { border-color: var(--accent); color: var(--accent-light); }
+.btn-success { background: var(--green); color: #fff; }
+.btn-success:hover { background: #059669; }
+.cta-bar { display: flex; justify-content: space-between; align-items: center; }
+.cta-hint { font-size: 12px; color: var(--text3); }
+
+/* Right panel: emerging task list */
+.chat-right {
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+.task-panel-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.task-panel-header .title { font-size: 13px; font-weight: 600; }
+.badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-purple { background: rgba(139,92,246,0.2); color: var(--purple); }
+.badge-blue { background: rgba(59,130,246,0.2); color: var(--blue); }
+.badge-amber { background: rgba(245,158,11,0.2); color: var(--amber); }
+.badge-red { background: rgba(239,68,68,0.2); color: var(--red); }
+.badge-green { background: rgba(16,185,129,0.2); color: var(--green); }
+.badge-gray { background: rgba(139,148,158,0.2); color: var(--text2); }
+.task-list { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.task-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  transition: all 0.2s;
+  opacity: 0;
+  transform: translateY(8px);
+}
+.task-card.visible { opacity: 1; transform: translateY(0); }
+.task-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.task-card-title { font-size: 13px; font-weight: 600; }
+.task-card-desc { font-size: 12px; color: var(--text2); line-height: 1.5; margin-bottom: 8px; }
+.task-card-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+.tag {
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text2);
+}
+
+/* ══════════════════════════════════════
+   PHASE 2 - Assignment
+══════════════════════════════════════ */
+#phase-assignment {
+  padding: 24px;
+  overflow-y: auto;
+}
+.assign-header { margin-bottom: 24px; }
+.assign-header h2 { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+.assign-header p { font-size: 13px; color: var(--text2); }
+.assign-stats { display: flex; gap: 16px; margin-bottom: 24px; }
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 20px;
+  flex: 1;
+}
+.stat-card .num { font-size: 24px; font-weight: 700; margin-bottom: 2px; }
+.stat-card .label { font-size: 12px; color: var(--text2); }
+.assign-table {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.table-header {
+  display: grid;
+  grid-template-columns: 220px 1fr 160px 140px 1fr;
+  gap: 1px;
+  background: var(--border);
+  font-size: 12px;
+  color: var(--text2);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.table-header > div, .table-row > div {
+  padding: 10px 16px;
+  background: var(--surface);
+}
+.table-row {
+  display: grid;
+  grid-template-columns: 220px 1fr 160px 140px 1fr;
+  gap: 1px;
+  background: var(--border);
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.table-row:hover > div { background: var(--surface2); }
+.agent-name-cell { display: flex; align-items: center; gap: 8px; }
+.skill-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.assign-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
+/* ══════════════════════════════════════
+   PHASE 3 - Kanban
+══════════════════════════════════════ */
+#phase-kanban { flex-direction: row; }
+.kanban-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.kanban-toolbar {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.kanban-toolbar .title { font-size: 14px; font-weight: 600; flex: 1; }
+.filter-tabs { display: flex; gap: 4px; }
+.filter-tab {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text2);
+  transition: all 0.15s;
+}
+.filter-tab:hover { color: var(--text); border-color: var(--border); }
+.filter-tab.active { background: var(--surface2); color: var(--text); border-color: var(--border); }
+.kanban-board {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  padding: 16px 20px;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+.kanban-col { display: flex; flex-direction: column; gap: 10px; min-width: 220px; }
+.col-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  margin-bottom: 4px;
+}
+.col-header .col-title { font-size: 12px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+.col-count {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 11px;
+  color: var(--text2);
+}
+.col-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.kanban-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+}
+.kanban-card:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.kanban-card.active-card { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(124,58,237,0.3); }
+.card-top { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+.card-agent-avatar { width: 30px; height: 30px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+.card-info { flex: 1; min-width: 0; }
+.card-title { font-size: 13px; font-weight: 600; line-height: 1.3; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-subtitle { font-size: 11.5px; color: var(--text2); }
+.card-desc { font-size: 12px; color: var(--text2); line-height: 1.5; margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card-progress { margin-bottom: 10px; }
+.progress-bar-wrap { background: var(--surface2); border-radius: 4px; height: 4px; overflow: hidden; margin-top: 5px; }
+.progress-bar { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+.progress-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--text3); margin-top: 3px; }
+.card-footer { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.card-model { font-size: 11px; color: var(--text3); background: var(--surface2); padding: 2px 6px; border-radius: 4px; }
+.card-time { font-size: 11px; color: var(--text3); margin-left: auto; }
+.card-alert {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--amber);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px;
+}
+
+/* Agent Detail Panel */
+#agent-panel {
+  width: 0;
+  overflow: hidden;
+  transition: width 0.25s ease;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+#agent-panel.open { width: 480px; }
+.panel-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.panel-close {
+  margin-left: auto;
+  cursor: pointer;
+  color: var(--text2);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  transition: all 0.15s;
+}
+.panel-close:hover { color: var(--text); }
+.panel-tabs { display: flex; border-bottom: 1px solid var(--border); }
+.panel-tab {
+  padding: 10px 16px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text2);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.panel-tab:hover { color: var(--text); }
+.panel-tab.active { color: var(--accent-light); border-bottom-color: var(--accent); }
+.panel-body { flex: 1; overflow-y: auto; }
+.panel-section { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.panel-section-title { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }
+.info-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12.5px; }
+.info-row .label { color: var(--text2); width: 80px; flex-shrink: 0; }
+.info-row .value { color: var(--text); }
+.panel-convo { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px; }
+.panel-msg .msg-role { font-size: 11px; color: var(--text3); margin-bottom: 4px; }
+.panel-msg .msg-text {
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 10px 14px;
+  border-radius: 8px;
+  white-space: pre-wrap;
+}
+.panel-msg.user .msg-text { background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.2); }
+.panel-msg.agent .msg-text { background: var(--surface2); border: 1px solid var(--border); }
+.panel-chat-input {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.panel-chat-input textarea {
+  flex: 1;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 13px;
+  resize: none;
+  height: 36px;
+  outline: none;
+  font-family: inherit;
+}
+.panel-chat-input textarea:focus { border-color: var(--accent); }
+.panel-chat-input .btn { padding: 8px 14px; height: 36px; flex-shrink: 0; }
+.code-block {
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-size: 12px;
+  font-family: 'Menlo', 'Monaco', monospace;
+  white-space: pre-wrap;
+  color: #a5f3fc;
+  line-height: 1.6;
+}
+.steer-buttons { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 16px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.steer-btn {
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  cursor: pointer;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  transition: all 0.15s;
+}
+.steer-btn:hover { color: var(--accent-light); border-color: var(--accent); }
+
+/* ══════════════════════════════════════
+   PHASE 4 - Verify
+══════════════════════════════════════ */
+#phase-verify {
+  flex-direction: row;
+  overflow: hidden;
+}
+.verify-left {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.verify-right {
+  width: 420px;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+.section-title { font-size: 14px; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.result-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.result-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+.result-card .rc-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.result-card .rc-title { font-size: 13px; font-weight: 600; }
+.result-card .rc-status { font-size: 12px; margin-bottom: 8px; }
+.result-card .rc-pr {
+  font-size: 11.5px;
+  color: var(--blue);
+  text-decoration: underline;
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+.result-card .rc-issues { font-size: 11.5px; color: var(--text2); }
+.issue-item { font-size: 11.5px; color: var(--amber); display: flex; gap: 6px; align-items: flex-start; margin-bottom: 4px; }
+.pr-list { display: flex; flex-direction: column; gap: 8px; }
+.pr-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pr-num { font-size: 12px; color: var(--text3); }
+.pr-title { font-size: 13px; font-weight: 500; flex: 1; }
+.status-badge {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.status-pending { background: rgba(139,148,158,0.15); color: var(--text2); }
+.status-running { background: rgba(59,130,246,0.15); color: var(--blue); }
+.status-review { background: rgba(245,158,11,0.15); color: var(--amber); }
+.status-done { background: rgba(16,185,129,0.15); color: var(--green); }
+.status-conflict { background: rgba(239,68,68,0.15); color: var(--red); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+/* Utilities */
+.flex { display: flex; }
+.items-center { align-items: center; }
+.gap-8 { gap: 8px; }
+.mt-4 { margin-top: 4px; }
+.mt-8 { margin-top: 8px; }
+.text-sm { font-size: 12px; }
+.text-xs { font-size: 11px; }
+.text-muted { color: var(--text2); }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- ═══════ HEADER ═══════ -->
+<div id="header">
+  <div class="logo">⬡ Multi-Agent <span>协作管理台</span></div>
+  <nav class="phase-nav">
+    <div class="phase-tab active" onclick="switchPhase(1)" id="tab-1">
+      <span class="step-num">1</span> 需求沟通
+    </div>
+    <div class="phase-tab" onclick="switchPhase(2)" id="tab-2">
+      <span class="step-num">2</span> 分工确认
+    </div>
+    <div class="phase-tab" onclick="switchPhase(3)" id="tab-3">
+      <span class="step-num">3</span> 执行看板
+    </div>
+    <div class="phase-tab" onclick="switchPhase(4)" id="tab-4">
+      <span class="step-num">4</span> 验收合并
+    </div>
+  </nav>
+  <div class="header-right">
+    <div class="project-badge">AI 生图效果优化循环 v1.0</div>
+    <div class="status-dot"></div>
+    <span style="font-size:12px;color:var(--text2)">运行中</span>
+  </div>
+</div>
+
+<!-- ═══════ MAIN ═══════ -->
+<div id="main">
+
+  <!-- ────── PHASE 1: 需求沟通 ────── -->
+  <section class="phase active" id="phase-chat">
+    <div class="chat-left">
+      <div class="chat-header">
+        <div class="agent-avatar" style="background:linear-gradient(135deg,#7c3aed,#a78bfa)">M</div>
+        <div class="agent-info">
+          <div class="name">主协调 Agent</div>
+          <div class="role">负责需求拆解与分工规划 · claude-opus-4-6</div>
+        </div>
+        <div class="status-badge status-running" style="margin-left:auto">● 活跃</div>
+      </div>
+      <div class="chat-messages" id="chatMessages"></div>
+      <div class="chat-input-area">
+        <div class="cta-bar">
+          <span class="cta-hint" id="chatHint">与主 Agent 沟通需求，确认后生成分工方案</span>
+          <button class="btn btn-success hidden" id="btnGenerate" onclick="generatePlan()">生成分工方案 →</button>
+        </div>
+        <div class="chat-input-row">
+          <textarea class="chat-input" id="mainChatInput" placeholder="描述你的项目目标或补充需求..." rows="1"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMainMsg()}"
+          ></textarea>
+          <button class="btn btn-primary" onclick="sendMainMsg()">发送</button>
+        </div>
+      </div>
+    </div>
+    <div class="chat-right">
+      <div class="task-panel-header">
+        <span class="title">📋 分工草案</span>
+        <span class="badge badge-purple" id="taskCount">0 个 Agent</span>
+      </div>
+      <div class="task-list" id="taskList">
+        <div style="padding:32px 16px;text-align:center;color:var(--text3);font-size:13px;">
+          与主 Agent 沟通后，这里会自动生成分工草案
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────── PHASE 2: 分工确认 ────── -->
+  <section class="phase" id="phase-assignment">
+    <div class="assign-header">
+      <h2>Agent 分工方案确认</h2>
+      <p>以下是主 Agent 根据需求生成的分工方案，确认后将自动启动各 Agent 执行任务。</p>
+    </div>
+    <div class="assign-stats" id="assignStats"></div>
+    <div class="assign-table" id="assignTable"></div>
+    <div class="assign-actions">
+      <button class="btn btn-secondary" onclick="switchPhase(1)">← 返回修改</button>
+      <button class="btn btn-success" onclick="confirmAndStart()">确认并开始执行 →</button>
+    </div>
+  </section>
+
+  <!-- ────── PHASE 3: 执行看板 ────── -->
+  <section class="phase" id="phase-kanban">
+    <div class="kanban-main">
+      <div class="kanban-toolbar">
+        <span class="title">执行看板</span>
+        <div class="filter-tabs" id="filterTabs">
+          <div class="filter-tab active" onclick="filterKanban('all',this)">全部</div>
+          <div class="filter-tab" onclick="filterKanban('pending',this)">待开始</div>
+          <div class="filter-tab" onclick="filterKanban('running',this)">进行中</div>
+          <div class="filter-tab" onclick="filterKanban('review',this)">待验收</div>
+          <div class="filter-tab" onclick="filterKanban('done',this)">已完成</div>
+        </div>
+        <button class="btn btn-secondary" style="font-size:12px" onclick="switchPhase(4)">进入验收 →</button>
+      </div>
+      <div class="kanban-board" id="kanbanBoard"></div>
+    </div>
+    <div id="agent-panel">
+      <div class="panel-header">
+        <div class="agent-avatar" id="panelAvatar" style="background:#7c3aed"></div>
+        <div>
+          <div style="font-size:13px;font-weight:600" id="panelName">Agent</div>
+          <div style="font-size:11.5px;color:var(--text2)" id="panelRole"></div>
+        </div>
+        <div class="panel-close" onclick="closePanel()">✕</div>
+      </div>
+      <div class="panel-tabs">
+        <div class="panel-tab active" onclick="switchPanelTab('task',this)">任务详情</div>
+        <div class="panel-tab" onclick="switchPanelTab('convo',this)">对话记录</div>
+        <div class="panel-tab" onclick="switchPanelTab('claude',this)">Claude.md</div>
+        <div class="panel-tab" onclick="switchPanelTab('system',this)">系统提示词</div>
+      </div>
+      <div class="panel-body" id="panelBody"></div>
+      <div class="steer-buttons" id="steerButtons"></div>
+      <div class="panel-chat-input">
+        <textarea placeholder="引导或调整 Agent 工作方向..." id="panelChatInput"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendPanelMsg()}"
+        ></textarea>
+        <button class="btn btn-primary" onclick="sendPanelMsg()">发送</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────── PHASE 4: 验收合并 ────── -->
+  <section class="phase" id="phase-verify">
+    <div class="verify-left">
+      <div>
+        <div class="section-title">📦 各 Agent 产出结果</div>
+        <div class="result-grid" id="resultGrid"></div>
+      </div>
+      <div>
+        <div class="section-title">🔀 PR 合并状态</div>
+        <div class="pr-list" id="prList"></div>
+      </div>
+      <div>
+        <div class="section-title">⚠️ 发现的问题</div>
+        <div id="issueList"></div>
+      </div>
+    </div>
+    <div class="verify-right">
+      <div class="chat-header">
+        <div class="agent-avatar" style="background:linear-gradient(135deg,#7c3aed,#a78bfa)">M</div>
+        <div class="agent-info">
+          <div class="name">主协调 Agent — 验收评估</div>
+          <div class="role">评估各 Agent 产出，定位问题 Agent</div>
+        </div>
+      </div>
+      <div class="chat-messages" id="verifyMessages"></div>
+      <div class="chat-input-area">
+        <div class="chat-input-row">
+          <textarea class="chat-input" id="verifyChatInput" placeholder="要求主 Agent 深入分析某个问题..." rows="1"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendVerifyMsg()}"
+          ></textarea>
+          <button class="btn btn-primary" onclick="sendVerifyMsg()">发送</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════
+// MOCK DATA
+// ════════════════════════════════════════════════════
+const MAIN_CHAT_SCRIPT = [
+  {
+    role: 'agent',
+    text: '你好！我是主协调 Agent，负责帮你将复杂项目需求拆解成多个 Agent 可执行的分工方案。\n\n请描述你的项目目标，我会基于项目上下文为你生成一份完整的 Agent 分工方案。',
+    time: '14:02',
+    taskReveal: []
+  },
+  {
+    role: 'user',
+    text: '我想做一个 AI 生图效果优化的完整工作流，需要覆盖评测集构造、图片生成、质检、RCA 根因分析和提示词调优几个环节，形成一个持续优化的闭环。',
+    time: '14:03'
+  },
+  {
+    role: 'agent',
+    text: '这是一个典型的 AI 能力评测与优化闭环，涉及多个专业领域，非常适合多 Agent 协作。\n\n在正式拆分之前，我需要了解几个关键信息：\n\n• 使用的生图模型是什么？（影响提示词策略设计）\n• 评测集的规模大概多少？（影响质检 Agent 的批处理设计）\n• 质检的核心维度有哪些？（文字、构图、风格、商户一致性等）\n• 是否需要支持多轮迭代？还是单次跑通即可？',
+    time: '14:04',
+    taskReveal: []
+  },
+  {
+    role: 'user',
+    text: '模型是内部的 LongCat，评测集大概 2000 张，分商品图、场景图、人物图三种类型。质检需要检查文字正确性、画面可用性、商户品牌一致性。需要支持多轮迭代优化。',
+    time: '14:05'
+  },
+  {
+    role: 'agent',
+    text: '明白了。基于你的需求，我设计了以下 5 Agent 分工方案，每个 Agent 负责闭环内的一个专项环节：\n\n① 评测集构造 Agent — 按商品图/场景图/人物图设计 2000 张评测集的类型分布与元数据结构\n② 图片生成 Agent — 调用 LongCat API 批量生成，管理 Prompt 版本与生成记录\n③ 图片质检 Agent — 多维度自动质检（文字/可用性/品牌一致性）+ badcase 标注\n④ RCA 根因分析 Agent — 分析质检失败原因，定位是 Prompt 问题、模型问题还是数据问题\n⑤ 提示词调优 Agent — 基于 RCA 结论输出优化后的 Prompt，支持 A/B 版本管理\n\n依赖关系：①→②→③→④→⑤→②（循环优化）。这个方案如何？',
+    time: '14:07',
+    taskReveal: [0,1,2,3,4]
+  },
+  {
+    role: 'user',
+    text: '方案很好，但 RCA Agent 需要和质检 Agent 有更紧密的协作，质检过程中发现的中间数据应该直接流向 RCA Agent，不要等质检全部完成。',
+    time: '14:09'
+  },
+  {
+    role: 'agent',
+    text: '收到！我更新了 ③ 和 ④ 之间的协作关系：\n\n质检 Agent 将采用流式输出模式，每完成一批（100张）的质检后，会将 badcase 列表和初步统计实时推送给 RCA Agent。RCA Agent 可以提前开始分析，不必等待全部 2000 张完成。\n\n这样可以节省约 40% 的整体等待时间，并让 RCA 结论更早对提示词调优产生指导。\n\n分工方案已更新，可以确认并进入执行阶段了。',
+    time: '14:10',
+    taskReveal: []
+  },
+  {
+    role: 'user',
+    text: '好，确认这个方案。',
+    time: '14:11'
+  },
+  {
+    role: 'agent',
+    text: '✅ 分工方案已确认，共 5 个专项 Agent。\n\n我已为每个 Agent 生成了：\n• 任务描述与验收标准\n• 所需上下文清单\n• 建议使用的模型与工具\n• Git 分支隔离策略\n\n点击「生成分工方案」即可进入分工确认页面，查看完整方案并启动执行。',
+    time: '14:11',
+    taskReveal: []
+  }
+];
+
+const AGENTS = [
+  {
+    id: 'dataset-builder',
+    name: '评测集构造',
+    fullName: '评测集构造 Agent',
+    role: '数据工程 · 类型规划',
+    avatar: 'D',
+    color: '#8b5cf6',
+    model: 'claude-opus-4-6',
+    status: 'done',
+    progress: 100,
+    branch: 'agent/dataset-builder',
+    lastUpdate: '2小时前',
+    skills: ['数据采样', '元数据设计', 'JSON Schema', '类型分布统计'],
+    contextNeeds: ['业务需求文档', '商户数据样本', '图片类型分类标准', '历史评测集参考'],
+    task: '按商品图（50%）、场景图（30%）、人物图（20%）的分布，从商户库中采样并构造 2000 张评测集，包含完整元数据（商户ID、行业、图片类型、参考Prompt、期望效果描述）。',
+    acceptance: '评测集覆盖三种图片类型，元数据完整率≥99%，类型分布误差≤2%，输出 evaluation_set_v1.jsonl',
+    systemPrompt: `你是一位专业的 AI 评测数据工程师，擅长为生图模型构建高质量评测集。
+
+你的职责是：
+1. 理解业务需求，按指定类型分布（商品图50%/场景图30%/人物图20%）设计评测集结构
+2. 从商户数据库中采样有代表性的样本
+3. 为每条数据设计完整的元数据字段
+4. 确保评测集的多样性和代表性
+
+工作原则：
+- 类型分布需严格遵守，误差不超过2%
+- 元数据完整率需达到99%以上
+- 优先选择覆盖更多业务场景的样本
+- 输出格式严格遵循 evaluation_set_v1.jsonl 规范`,
+    claudeMd: `# 评测集构造 Agent
+
+## 项目背景
+AI 生图效果优化闭环，第一个环节。
+
+## 任务边界
+- 只负责评测集的构造，不参与图片生成
+- 输出文件：evaluation_set_v1.jsonl
+- 不得修改：src/image_gen/, src/quality_check/ 目录
+
+## 数据规范
+- 商品图 (product): 1000条
+- 场景图 (scene): 600条
+- 人物图 (portrait): 400条
+
+## 输出字段
+\`\`\`json
+{
+  "id": "eval_xxxx",
+  "merchant_id": "...",
+  "industry": "...",
+  "image_type": "product|scene|portrait",
+  "ref_prompt": "...",
+  "expected_desc": "...",
+  "metadata": {...}
+}
+\`\`\`
+
+## 验收标准
+- 总条数：2000
+- 完整率：≥ 99%
+- 类型误差：≤ 2%`,
+    conversations: [
+      { role: 'user', text: '开始执行任务，按照文档中的类型分布构建 2000 张评测集。', time: '09:15' },
+      { role: 'agent', text: '收到任务。我先分析商户数据库的现有数据分布：\n\n当前数据库统计：\n• 商品图相关商户：4,821 家\n• 场景图相关商户：2,156 家  \n• 人物图相关商户：987 家\n\n按目标分布（50/30/20），我将分别采样 1000/600/400 条。开始执行采样逻辑...', time: '09:16' },
+      { role: 'agent', text: '采样完成，进行元数据补全检查：\n\n✅ 商品图：1000条，元数据完整率 99.7%\n✅ 场景图：600条，元数据完整率 99.5%\n⚠️ 人物图：400条，元数据完整率 97.3%（人物图中23条缺少"人物类型"字段）\n\n我将对缺失字段进行自动推断补全...', time: '09:23' },
+      { role: 'user', text: '人物图的"人物类型"字段怎么推断的？要保证准确性。', time: '09:25' },
+      { role: 'agent', text: '推断策略：\n\n1. 优先从商户行业标签推断（美妆→模特展示；服装→模特穿搭；教育→师生场景）\n2. 其次通过商户历史图片的 EXIF 元数据推断\n3. 实在无法推断的，标记为 "unknown" 并输出到 ambiguous_list.json 供人工确认\n\n当前：19条成功推断，4条标记为 unknown（占人物图0.8%，在可接受范围内）。', time: '09:27' },
+      { role: 'agent', text: '✅ 评测集构造完成！\n\n输出文件：evaluation_set_v1.jsonl（2000条）\n总体元数据完整率：99.6%\n类型分布误差：0.3%（在误差范围内）\n已标记 ambiguous 样本：4条（附在 ambiguous_list.json）\n\n任务完成，等待验收。', time: '10:02' }
+    ],
+    prNum: 'PR #47',
+    prStatus: 'done',
+    prTitle: '评测集构造：2000条评测数据（商品/场景/人物）',
+    issues: []
+  },
+  {
+    id: 'image-generator',
+    name: '图片生成',
+    fullName: '图片生成 Agent',
+    role: '模型调用 · 批处理',
+    avatar: 'G',
+    color: '#3b82f6',
+    model: 'claude-sonnet-4-6',
+    status: 'running',
+    progress: 70,
+    branch: 'agent/image-generator',
+    lastUpdate: '12分钟前',
+    skills: ['LongCat API', 'Prompt 管理', '批处理调度', '错误重试', '版本记录'],
+    contextNeeds: ['evaluation_set_v1.jsonl', 'LongCat API 文档', 'Prompt 模板库 v3', '生成配额限制'],
+    task: '读取评测集，调用 LongCat 生图 API 批量生成 2000 张图片，管理 Prompt 版本记录和生成结果元数据，确保每张图片有完整的生成日志。',
+    acceptance: '生成成功率≥95%，所有成功生成的图片有完整元数据，输出 generation_results_v1.jsonl，Prompt 版本记录到 prompt_log.json',
+    systemPrompt: `你是一位专业的 AI 生图工程师，负责管理 LongCat 模型的批量生图任务。
+
+你的职责是：
+1. 读取评测集，对每条数据构造生图 Prompt
+2. 合理管理 API 调用频率，避免超额限制
+3. 处理生成失败的情况（重试 3 次后标记失败）
+4. 记录完整的生成元数据和 Prompt 版本
+
+工作原则：
+- Prompt 构造遵循 Prompt 模板库 v3 的规范
+- 生成失败的条目需详细记录失败原因
+- 每批次生成后立即写入结果，防止数据丢失`,
+    claudeMd: `# 图片生成 Agent
+
+## 任务边界
+- 输入：evaluation_set_v1.jsonl（来自评测集构造 Agent）
+- 输出：generation_results_v1.jsonl, prompt_log.json
+- 不得修改：src/dataset/, src/quality_check/ 目录
+
+## API 调用规范
+- 并发数：≤ 10
+- 重试策略：3次，退避间隔 2/4/8s
+- 超时时间：30s/张
+
+## Prompt 构造规范
+基于 prompt_template_v3.json，变量注入：
+- merchant_context: 商户行业 + 品牌关键词
+- image_type: product/scene/portrait
+- quality_requirements: 文字清晰/构图合理/色彩自然
+
+## 进度追踪
+每完成 100 张，写入进度文件 generation_progress.json`,
+    conversations: [
+      { role: 'user', text: '评测集已就绪（evaluation_set_v1.jsonl），开始批量生图。', time: '10:15' },
+      { role: 'agent', text: '收到！读取评测集成功，共 2000 条。开始按类型处理：\n\n批次规划：\n• 商品图 1000张 → 20批 × 50张\n• 场景图 600张 → 12批 × 50张\n• 人物图 400张 → 8批 × 50张\n\n预计总耗时：约 4小时（API 限速 10并发）。开始执行...', time: '10:16' },
+      { role: 'agent', text: '进度更新：\n\n✅ 商品图：1000/1000 完成（成功率 98.2%）\n🔄 场景图：320/600 进行中（64%）\n⏳ 人物图：等待中\n\n已生成总计：1320 张，平均耗时 4.2s/张', time: '13:30' },
+      { role: 'user', text: '场景图的生成速度有点慢，可以提高并发吗？', time: '13:32' },
+      { role: 'agent', text: '当前并发为 10，受 LongCat API 限速策略限制（QPS=12）。目前 10 并发已接近上限。\n\n可以尝试：并发提到 12，但需要注意限速风险。建议我先在当前队列中优先调度场景图剩余批次，预计可节省 15 分钟。是否调整？', time: '13:33' },
+      { role: 'user', text: '好，并发调到 12，同时优先处理场景图。', time: '13:34' },
+      { role: 'agent', text: '已调整并发至 12，场景图剩余 280 张优先执行。预计 20 分钟内完成场景图，整体任务提前约 18 分钟。', time: '13:35' },
+      { role: 'agent', text: '⚠️ API 限速触发！第38批（batch_038）请求收到 HTTP 429 Too Many Requests。\n\n自动处理方案：\n• 触发退避策略：暂停 8 秒后重试\n• 临时将并发降回 10，稳定后再评估\n• 受影响的 12 张图片加入重试队列\n\n此次触发不影响已完成的 1,388 张，预计延迟约 3 分钟。', time: '13:51' },
+      { role: 'agent', text: '限速恢复正常，继续执行。当前进度更新：\n\n✅ 商品图：1000/1000（成功 982 张，失败重试中 18 张）\n✅ 场景图：600/600（成功 591 张，失败 9 张已标记）\n🔄 人物图：280/400（70%）\n\n累计已生成：1880/2000，整体成功率 97.1%，平均耗时 4.6s/张', time: '14:02' },
+      { role: 'agent', text: '✅ 全部 2000 张生图任务执行完毕！\n\n最终统计：\n• 总成功：1926 张（成功率 96.3%）\n• 失败（3次重试后放弃）：74 张（3.7%）\n  - 限速导致超时：31 张\n  - Prompt 结构异常：28 张\n  - API 内部错误：15 张\n• 平均耗时：4.6s/张\n• 总耗时：约 3小时52分\n\n输出文件：generation_results_v1.jsonl（1926条）\nPrompt 版本记录：prompt_log.json（含74条失败详情）\n\n已通知质检 Agent 开始对 1926 张图片进行质检。', time: '14:18' }
+    ],
+    prNum: null,
+    prStatus: 'running',
+    prTitle: null,
+    issues: ['并发调整可能触发 API 限速警告'],
+    alert: true
+  },
+  {
+    id: 'quality-checker',
+    name: '图片质检',
+    fullName: '图片质检 Agent',
+    role: '多维质检 · 流式输出',
+    avatar: 'Q',
+    color: '#f59e0b',
+    model: 'claude-opus-4-6',
+    status: 'review',
+    progress: 95,
+    branch: 'agent/quality-checker',
+    lastUpdate: '38分钟前',
+    skills: ['视觉理解', '文字识别', '品牌一致性检测', '批量分析', '流式推送'],
+    contextNeeds: ['generation_results_v1.jsonl', '质检标准文档 v2', '商户品牌资产库', '评测集元数据'],
+    task: '对生成的图片进行三维度质检：文字正确性（有无错字/乱码）、画面可用性（构图/清晰度/主体完整性）、商户品牌一致性（色系/LOGO/风格）。每完成 100 张，流式推送给 RCA Agent。',
+    acceptance: '质检覆盖率100%，每张图有完整评分（0-10分），badcase 列表完整，输出 quality_report_v1.json',
+    systemPrompt: `你是一位专业的 AI 生图质量检验工程师，专注于商业图片的多维度质量评估。
+
+质检维度：
+1. 文字正确性（权重30%）：检测图片中文字的准确性，识别错字、乱码、截断
+2. 画面可用性（权重40%）：评估构图合理性、清晰度、主体完整性、整体美观度
+3. 品牌一致性（权重30%）：对比商户品牌资产，验证色调、LOGO展示、品牌风格
+
+输出要求：
+- 每张图片给出三维评分（0-10分）和综合评分
+- 综合评分 < 6 标记为 badcase
+- 详细说明问题原因
+- 每100张完成后推送流式结果给 RCA Agent`,
+    claudeMd: `# 图片质检 Agent
+
+## 任务边界
+- 输入：generation_results_v1.jsonl（来自图片生成 Agent）
+- 输出：quality_report_v1.json（流式推送 + 最终报告）
+- 不得修改：src/dataset/, src/image_gen/ 目录
+
+## 质检标准
+| 维度 | 权重 | 合格线 |
+|------|------|--------|
+| 文字正确性 | 30% | ≥ 7 |
+| 画面可用性 | 40% | ≥ 6 |
+| 品牌一致性 | 30% | ≥ 6 |
+
+综合得分 < 6 → badcase
+
+## 流式输出协议
+每完成100张，推送到 rca_agent_inbox/batch_{n}.json:
+- batch_id, completed_count
+- badcase_list: [{img_id, scores, issues}]
+- summary_stats
+
+## 质检完成条件
+- 覆盖率 100%
+- badcase 列表完整
+- 输出 quality_report_v1.json`,
+    conversations: [
+      { role: 'user', text: '开始对已生成的图片执行质检，需要流式输出给 RCA Agent。', time: '11:00' },
+      { role: 'agent', text: '收到，已接入 generation_results_v1.jsonl（当前 1000 张商品图已生成完毕）。\n\n启动三维质检流程，同时建立到 RCA Agent 的流式推送通道（rca_agent_inbox/）。', time: '11:01' },
+      { role: 'agent', text: '第1批（0-100张）质检完成：\n\n文字正确性问题：8张（主要：文字截断6张、错字2张）\n画面可用性问题：12张（主要：主体不清晰9张、构图失衡3张）\n品牌一致性问题：5张（主要：色调偏差）\n\nbadcase（综合<6）：15张（15%），已推送给 RCA Agent。', time: '11:18' },
+      { role: 'agent', text: '批次进度（共20批）：\n\n✅ 批次1-16：完成（1600张）\n🔄 批次17：进行中\n⏳ 批次18-20：等待中\n\n当前整体 badcase 率：11.3%（181/1600）\n主要问题聚集在：场景图的文字截断（占 badcase 的43%）', time: '13:45' },
+      { role: 'user', text: '场景图文字截断的比例很高，能输出这类问题的典型样例吗？', time: '13:47' },
+      { role: 'agent', text: '已汇总场景图文字截断典型样例（top10），关键特征：\n\n1. 长文字（>12字）在宽幅图中频繁截断\n2. 文字颜色与背景对比度低导致识别失败\n3. 文字位于图片边缘1/4区域时截断率最高\n\n这3个规律已实时同步给 RCA Agent，可用于提前定位根因。', time: '13:50' },
+      { role: 'agent', text: '✅ 全部 1900 张（已生成）质检完成！\n\n最终统计：\n• 合格：1687 张（88.8%）\n• badcase：213 张（11.2%）\n• 主要问题：场景图文字截断（87张）、人物图品牌色偏差（63张）、商品图主体不清晰（41张）\n\n输出：quality_report_v1.json，等待主 Agent 验收。', time: '15:30' }
+    ],
+    prNum: 'PR #52',
+    prStatus: 'review',
+    prTitle: '图片质检报告：1900张，badcase率11.2%，流式结果已推送',
+    issues: ['场景图文字截断率偏高（22%）', '等待图片生成 Agent 剩余 100 张']
+  },
+  {
+    id: 'rca-analyst',
+    name: '根因分析',
+    fullName: '根因分析 Agent',
+    role: 'RCA 分析 · 实时接收',
+    avatar: 'R',
+    color: '#ef4444',
+    model: 'claude-opus-4-6',
+    status: 'running',
+    progress: 35,
+    branch: 'agent/rca-analyst',
+    lastUpdate: '5分钟前',
+    skills: ['根因分析', '统计分析', 'Prompt 归因', '模式识别', '报告生成'],
+    contextNeeds: ['quality_report_v1.json（流式）', '历史 Prompt 版本记录', 'LongCat 模型变更日志', '商户类型分类'],
+    task: '实时接收质检 Agent 的流式输出，对 badcase 进行根因归因（Prompt 设计问题/模型能力边界/数据问题/商户特异性），输出根因分类报告供提示词调优 Agent 使用。',
+    acceptance: '覆盖所有 badcase，根因分类准确率≥80%（人工抽检），输出 rca_report_v1.json，包含问题优先级排序',
+    systemPrompt: `你是一位专业的 AI 效果根因分析师，擅长从生图质检结果中定位深层原因。
+
+根因分类框架：
+1. Prompt 设计问题（P类）：Prompt 描述不准确、缺少关键约束、格式不符合模型习惯
+2. 模型能力边界（M类）：当前模型本身的局限，不依赖 Prompt 修改可改善
+3. 数据质量问题（D类）：评测集中的参考描述有误或不清晰
+4. 商户特异性问题（S类）：特定商户/行业的特殊需求导致的问题
+
+工作方式：
+- 实时接收质检 Agent 的流式推送
+- 每批分析完成后，更新累计根因统计
+- 最终输出按优先级排序的根因报告`,
+    claudeMd: `# 根因分析 Agent
+
+## 任务边界
+- 输入：rca_agent_inbox/（质检 Agent 流式推送）
+- 输出：rca_report_v1.json
+- 不得修改：src/dataset/, src/image_gen/, src/quality_check/ 目录
+
+## 根因分类
+- P类（Prompt问题）：可通过调优提示词改善
+- M类（模型问题）：需要模型侧介入，记录但不处理
+- D类（数据问题）：反馈给评测集构造 Agent
+- S类（商户特异性）：需要商户定制化策略
+
+## 优先级原则
+P类问题优先分析并输出 → 提示词调优 Agent 使用
+
+## 输出格式
+rca_report_v1.json 包含：
+- summary: 整体根因分布
+- p_class_issues: P类问题详细列表
+- recommendations: 调优建议（供提示词 Agent 使用）`,
+    conversations: [
+      { role: 'agent', text: '已建立与质检 Agent 的流式接收通道，开始实时分析 badcase。', time: '11:05' },
+      { role: 'agent', text: '第1批分析完成（15个 badcase）：\n\n根因初步分布：\n• P类（Prompt问题）：9个（60%）\n• M类（模型问题）：3个（20%）\n• D类（数据问题）：2个（13%）\n• S类（商户特异性）：1个（7%）\n\nP类主要表现：文字长度未约束、场景描述过于抽象', time: '11:22' },
+      { role: 'agent', text: '累计分析进度（8批/20批，约 800 badcase 维度）：\n\nP类问题正在凸显的模式：\n1. 文字类 Prompt 缺少"字符数上限"约束（影响37%场景图）\n2. 品牌色描述使用自然语言而非色值，模型理解偏差大\n3. 人物图缺少"背景简洁度"约束\n\n已生成初步调优建议，准备推送给提示词调优 Agent。', time: '14:00' },
+      { role: 'user', text: 'P类问题比例这么高，是 Prompt 模板设计的系统性问题吗？', time: '14:05' },
+      { role: 'agent', text: '是的，这是系统性问题。分析发现 Prompt 模板 v3 在设计时存在三个共性缺陷：\n\n1. 缺少图片元素的尺寸/数量约束（影响所有类型）\n2. 颜色描述标准不统一（影响品牌一致性）\n3. 负向约束（不要出现X）比正向约束（必须包含Y）使用率低\n\n这3个问题导致了约65%的 badcase，是 v4 模板重点改进方向。', time: '14:07' },
+      { role: 'agent', text: 'P类问题详细拆解（基于已分析的 127 个 P类 badcase）：\n\nP-001 文字长度未约束（41例，32%）\n  → Prompt 行：quality_requirements 字段缺失 max_chars 参数\n  → 典型失败：场景图标题文字超出画面边界\n\nP-002 品牌色使用自然语言描述（33例，26%）\n  → Prompt 行：merchant_context.brand_color = "暖橙色" 等描述词\n  → 典型失败：色值偏差 >20% 导致品牌一致性评分 <5\n\nP-003 人物背景未约束简洁度（29例，23%）\n  → Prompt 行：portrait 模板缺少 background_complexity 字段\n  → 典型失败：背景杂乱遮挡商品主体\n\nP-004 构图优先级描述歧义（24例，19%）\n  → Prompt 行：image_type=scene 时 focal_point 字段为空\n  → 典型失败：构图失衡，主体偏移画面中心30%以上\n\n4类问题均可通过修改 prompt_template_v3.json 改善，预计可修复 P类 badcase 的 70-80%。', time: '14:15' },
+      { role: 'agent', text: '与历史版本对比（v2 vs v3 模板，基于上一轮 1500 张数据集）：\n\n| 问题类型 | v2 badcase率 | v3 badcase率 | 变化 |\n|---------|------------|------------|------|\n| P类总计  | 8.2%        | 11.8%       | ↑43% |\n| 文字截断  | 3.1%        | 5.6%        | ↑81% |\n| 品牌色偏差 | 2.4%        | 3.8%        | ↑58% |\n| 背景杂乱  | 1.7%        | 2.4%        | ↑41% |\n\n结论：v3 模板在商户行业覆盖上有所扩展，但引入了更多开放式变量，反而降低了 Prompt 的约束强度，导致 P类问题恶化。v4 需要在保留 v3 行业扩展的同时，重新加强约束层。', time: '14:28' },
+      { role: 'agent', text: '✅ 初步 RCA 报告已生成，推送给提示词调优 Agent。\n\n推送内容摘要（rca_preliminary_for_tuner.json）：\n\n1. 高优先级修复清单（P类，共4项）\n   - P-001: quality_requirements 增加 max_text_chars=8 约束\n   - P-002: brand_color 字段改为 HEX 格式（如 #FF6B35）\n   - P-003: portrait 模板新增 background_simplicity: high 字段\n   - P-004: scene 模板 focal_point 字段设为必填并提供枚举值\n\n2. 建议验证方式：各取 50 张 badcase 对应类型，新旧模板各生成一次，计算修复率\n\n3. 预计改善目标：P类 badcase 率从 11.8% 降至 5% 以下\n\n全量 rca_report_v1.json 将在质检 Agent 完成剩余 26 张后输出。', time: '14:35' }
+    ],
+    prNum: null,
+    prStatus: 'running',
+    prTitle: null,
+    issues: ['依赖质检 Agent 全量完成', '当前分析覆盖率仅 35%']
+  },
+  {
+    id: 'prompt-tuner',
+    name: '提示词调优',
+    fullName: '提示词调优 Agent',
+    role: 'Prompt 优化 · 版本管理',
+    avatar: 'T',
+    color: '#10b981',
+    model: 'claude-sonnet-4-6',
+    status: 'pending',
+    progress: 0,
+    branch: 'agent/prompt-tuner',
+    lastUpdate: '未启动',
+    skills: ['Prompt Engineering', 'A/B测试设计', '版本管理', '效果评估', '模板生成'],
+    contextNeeds: ['rca_report_v1.json', 'Prompt 模板库 v3', 'A/B 测试框架文档', '历史调优记录'],
+    task: '基于 RCA 分析报告，对现有 Prompt 模板进行针对性优化，输出 Prompt 模板 v4，并设计 A/B 测试方案，验证优化效果。',
+    acceptance: '输出 prompt_template_v4.json，A/B 测试方案文档，预期改善 P类 badcase 率≥40%',
+    systemPrompt: `你是一位专业的 AI Prompt 工程师，专注于生图模型的提示词优化。
+
+你的工作方式：
+1. 深度分析 RCA 报告，理解每类 P类问题的根本原因
+2. 针对性修改 Prompt 模板，而非全量重写
+3. 每次修改附上修改理由和预期改善方向
+4. 设计 A/B 测试方案，确保优化可验证
+
+优化原则：
+- 精准定向修改，避免过度修改引入新问题
+- 保留原有有效的 Prompt 结构
+- 新增约束使用正向描述（must contain）而非负向（do not）
+- 颜色描述统一使用 HEX/RGB 格式`,
+    claudeMd: `# 提示词调优 Agent
+
+## 任务边界
+- 输入：rca_report_v1.json（来自 RCA Agent）
+- 输出：prompt_template_v4.json, ab_test_plan.md
+- 不得修改：src/dataset/, src/image_gen/, src/quality_check/, src/rca/ 目录
+
+## 调优原则
+1. 针对 P类问题逐条修复
+2. 每个修改项需注明对应的 RCA 问题 ID
+3. 保留 v3 模板中有效的结构
+
+## 版本管理
+prompt_template_v4.json 包含：
+- 完整模板内容
+- 与 v3 的变更列表
+- 每个变更的预期改善方向
+
+## 等待条件
+需等待 rca_report_v1.json 完成后才能启动`,
+    conversations: [
+      { role: 'agent', text: '⏸ 当前状态：等待依赖项完成。\n\n依赖条件：rca_report_v1.json（来自根因分析 Agent）\n当前进度：RCA Agent 完成率 35%，预计还需 ~2.5 小时\n\n我已完成准备工作：\n• 读取 Prompt 模板库 v3（共47个模板，覆盖商品/场景/人物三类）\n• 分析历史调优记录（v1→v2→v3 的变更日志）\n• 准备 A/B 测试框架模板\n\n一旦收到 rca_preliminary_for_tuner.json，我将立即开始工作。', time: '14:36' },
+      { role: 'agent', text: '📋 预执行规划（基于 RCA Agent 实时推送的初步结论）：\n\n当 rca_report_v1.json 就绪后，我的执行计划如下：\n\n阶段1（约30分钟）：P类问题定向修复\n  - 针对 P-001：在所有涉及文字的模板中注入 max_text_chars 参数\n  - 针对 P-002：将 merchant_context.brand_color 字段类型改为 HEX/RGB 强校验\n  - 针对 P-003：portrait 类模板新增 background_simplicity 枚举字段\n  - 针对 P-004：scene 类模板 focal_point 字段强制非空\n\n阶段2（约20分钟）：生成 prompt_template_v4.json\n  - 保留 v3 的行业扩展结构（23个行业分类）\n  - 输出完整 diff：v3→v4 变更列表（预计 ~12处修改）\n\n阶段3（约15分钟）：A/B 测试方案\n  - 实验组：v4 模板，对照组：v3 模板\n  - 各取 200 张（商品/场景/人物各约67张），重新生图后质检\n  - 主指标：P类 badcase 率，目标从 11.8% 降至 <5%\n\n预计总耗时：~65 分钟。等待 RCA Agent 完成后立即启动。', time: '14:38' }
+    ],
+    prNum: null,
+    prStatus: 'pending',
+    prTitle: null,
+    issues: ['等待 RCA Agent 完成分析']
+  }
+];
+
+const VERIFY_CHAT_SCRIPT = [
+  {
+    role: 'agent',
+    text: '所有 Agent 的任务已进入验收阶段，我来对各 Agent 的产出做整体评估。\n\n初步结论：\n• ✅ 评测集构造（Agent #1）：完全符合验收标准\n• ⚠️ 图片生成（Agent #2）：成功率 96.3%，略低于预期但在可接受范围，并发调整需要记录\n• ⚠️ 图片质检（Agent #3）：场景图 badcase 率偏高（22%），需要关注\n• 🔄 根因分析（Agent #4）：仍在进行中，等待全量数据\n• ⏳ 提示词调优（Agent #5）：未启动，依赖 Agent #4\n\n主要风险点是 Agent #3 发现的场景图文字截断问题，这会直接影响后续调优效果。',
+    time: '15:45'
+  },
+  {
+    role: 'user',
+    text: '你觉得哪个 Agent 的产出问题最严重？具体说明一下。',
+    time: '15:47'
+  },
+  {
+    role: 'agent',
+    text: '从对下一轮优化循环的影响来看，问题最严重的是图片生成 Agent（#2）。\n\n原因分析：\n\n表面上看，质检 Agent（#3）发现的 11.2% badcase 率更显眼，但质检只是"发现问题"的环节，本身产出完整、逻辑正确。\n\n图片生成 Agent 的问题更根本：\n1. 74 张彻底失败（3次重试放弃），这 74 张在质检和 RCA 中都没有覆盖，是评测集的盲区\n2. 失败中有 28 张是"Prompt 结构异常"导致的——这意味着 LongCat API 对 v3 模板中某些字段组合存在解析问题，而 RCA Agent 的分析无法覆盖这部分（因为无生成结果可分析）\n3. API 限速触发导致的 batch_038 中断，说明并发策略存在隐患，下一轮 2000 张同样会触发\n\n具体量化影响：\n• 质检覆盖率实际只有 96.3%（1926/2000），而非设计中的 100%\n• RCA 分析基于的 badcase 样本缺失 ~3-5%，根因结论存在偏差风险\n• 如果不在下一轮修复限速问题，v4 模板的 A/B 验证结果同样会受污染',
+    time: '15:49'
+  },
+  {
+    role: 'user',
+    text: '好，那下一轮优化循环的行动计划是什么？',
+    time: '15:51'
+  },
+  {
+    role: 'agent',
+    text: '下一轮优化循环的建议行动计划（按优先级排序）：\n\n【立即处理 — 启动条件】\n① 等待 RCA Agent 完成全量分析，输出 rca_report_v1.json（预计 ~1小时）\n② 图片生成 Agent 补充生成 74 张失败图片（使用 v3 模板，排查 Prompt 结构异常的28张）\n\n【第二轮核心任务】\n③ 提示词调优 Agent 接收 RCA 报告，输出 prompt_template_v4.json\n   - 重点修复：P-001 文字长度约束、P-002 品牌色 HEX 格式、P-003 背景简洁度、P-004 场景焦点\n   - 预期：P类 badcase 率从 11.8% 降至 <5%\n\n④ 图片生成 Agent 同步修复 API 调用策略：\n   - 并发上限调回 10（稳定优先于速度）\n   - 增加 QPS 监控，动态退避\n   - 对 Prompt 结构异常的 28 类图片追加格式校验前置步骤\n\n【验证轮次】\n⑤ 用 v4 模板对 200 张（商品/场景/人物各约 67 张）执行 A/B 生图对比\n⑥ 质检 Agent 对比两组数据，目标：v4 整体 badcase 率降至 <7%，场景图文字截断率降至 <5%\n\n整体预计耗时：~5 小时，完成后可进入第二轮闭环验收。',
+    time: '15:53'
+  }
+];
+
+// ════════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════════
+let currentPhase = 1;
+let mainChatIdx = 0;
+let currentAgentId = null;
+let currentPanelTab = 'task';
+let verifyMsgIdx = 0;
+
+const statusConfig = {
+  done:    { label: '已完成', color: 'var(--green)',  dotColor: '#10b981', badgeClass: 'status-done' },
+  running: { label: '进行中', color: 'var(--blue)',   dotColor: '#3b82f6', badgeClass: 'status-running' },
+  review:  { label: '待验收', color: 'var(--amber)',  dotColor: '#f59e0b', badgeClass: 'status-review' },
+  pending: { label: '待开始', color: 'var(--text2)',  dotColor: '#6e7681', badgeClass: 'status-pending' }
+};
+
+// ════════════════════════════════════════════════════
+// PHASE NAVIGATION
+// ════════════════════════════════════════════════════
+function switchPhase(n) {
+  currentPhase = n;
+  document.querySelectorAll('.phase').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.phase-tab').forEach(el => el.classList.remove('active'));
+  document.getElementById('phase-' + ['','chat','assignment','kanban','verify'][n]).classList.add('active');
+  document.getElementById('tab-' + n).classList.add('active');
+  if (n === 2) renderAssignment();
+  if (n === 3) renderKanban();
+  if (n === 4) renderVerify();
+}
+
+// ════════════════════════════════════════════════════
+// PHASE 1: CHAT
+// ════════════════════════════════════════════════════
+const taskDefs = [
+  { title: '评测集构造 Agent', icon: '📦', desc: '设计2000张评测集，覆盖商品/场景/人物三种类型', color: '#8b5cf6', tags: ['claude-opus-4-6', '数据工程', 'JSON Schema'] },
+  { title: '图片生成 Agent', icon: '🖼️', desc: '调用LongCat API批量生图，管理Prompt版本记录', color: '#3b82f6', tags: ['claude-sonnet-4-6', 'API调用', '批处理'] },
+  { title: '图片质检 Agent', icon: '🔍', desc: '三维度质检：文字/可用性/品牌一致性，流式输出', color: '#f59e0b', tags: ['claude-opus-4-6', '视觉理解', '流式推送'] },
+  { title: '根因分析 Agent', icon: '🔬', desc: '实时接收质检流，P/M/D/S四类根因归因', color: '#ef4444', tags: ['claude-opus-4-6', 'RCA', '统计分析'] },
+  { title: '提示词调优 Agent', icon: '✏️', desc: '基于RCA输出Prompt v4，设计A/B测试方案', color: '#10b981', tags: ['claude-sonnet-4-6', 'Prompt工程', 'A/B测试'] }
+];
+
+function appendChatMsg(container, msg) {
+  const div = document.createElement('div');
+  div.className = `msg ${msg.role}`;
+  const avatar = msg.role === 'user'
+    ? `<div class="msg-avatar" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2)">我</div>`
+    : `<div class="msg-avatar" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);color:#fff;font-weight:700">M</div>`;
+  div.innerHTML = `${avatar}<div><div class="msg-bubble"><p>${msg.text.replace(/\n/g,'</p><p>').replace(/•/g,'•')}</p></div><div class="msg-time">${msg.time||''}</div></div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function revealTasks(indices) {
+  const list = document.getElementById('taskList');
+  if (list.querySelector('[data-empty]')) list.innerHTML = '';
+  indices.forEach(i => {
+    const t = taskDefs[i];
+    const card = document.createElement('div');
+    card.className = 'task-card';
+    card.innerHTML = `
+      <div class="task-card-header">
+        <div class="agent-avatar" style="background:${t.color}20;color:${t.color};width:24px;height:24px;font-size:14px">${t.icon}</div>
+        <span class="task-card-title">${t.title}</span>
+      </div>
+      <div class="task-card-desc">${t.desc}</div>
+      <div class="task-card-meta">${t.tags.map(tag=>`<span class="tag">${tag}</span>`).join('')}</div>
+    `;
+    list.appendChild(card);
+    setTimeout(() => card.classList.add('visible'), 50);
+  });
+  const count = list.querySelectorAll('.task-card').length;
+  document.getElementById('taskCount').textContent = `${count} 个 Agent`;
+}
+
+function sendMainMsg() {
+  const input = document.getElementById('mainChatInput');
+  const text = input.value.trim();
+  const container = document.getElementById('chatMessages');
+
+  if (text) {
+    appendChatMsg(container, { role: 'user', text, time: new Date().toLocaleTimeString('zh',{hour:'2-digit',minute:'2-digit'}) });
+    input.value = '';
+  }
+
+  if (mainChatIdx < MAIN_CHAT_SCRIPT.length) {
+    const msg = MAIN_CHAT_SCRIPT[mainChatIdx++];
+    setTimeout(() => {
+      appendChatMsg(container, msg);
+      if (msg.taskReveal && msg.taskReveal.length > 0) revealTasks(msg.taskReveal);
+      if (mainChatIdx === MAIN_CHAT_SCRIPT.length) {
+        document.getElementById('btnGenerate').classList.remove('hidden');
+        document.getElementById('chatHint').textContent = '需求已确认，可以生成分工方案';
+      }
+    }, 800);
+  }
+}
+
+function generatePlan() {
+  document.getElementById('tab-2').querySelector('.step-num').innerHTML = '<span class="step-check">✓</span>';
+  document.getElementById('tab-1').querySelector('.step-num').innerHTML = '<span class="step-check">✓</span>';
+  switchPhase(2);
+}
+
+// Auto-start chat
+window.addEventListener('load', () => {
+  // Seed empty state
+  const list = document.getElementById('taskList');
+  list.querySelector('div') && list.querySelector('div').setAttribute('data-empty','1');
+  // Show first agent message
+  setTimeout(() => {
+    const msg = MAIN_CHAT_SCRIPT[mainChatIdx++];
+    appendChatMsg(document.getElementById('chatMessages'), msg);
+  }, 400);
+});
+
+// ════════════════════════════════════════════════════
+// PHASE 2: ASSIGNMENT
+// ════════════════════════════════════════════════════
+function renderAssignment() {
+  const stats = document.getElementById('assignStats');
+  stats.innerHTML = `
+    <div class="stat-card"><div class="num" style="color:var(--purple)">${AGENTS.length}</div><div class="label">参与 Agent 数</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--blue)">2000</div><div class="label">评测图片规模</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--amber)">5</div><div class="label">任务依赖层数</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--green)">闭环</div><div class="label">工作流类型</div></div>
+  `;
+  const table = document.getElementById('assignTable');
+  table.innerHTML = `
+    <div class="table-header">
+      <div>Agent</div><div>职责描述</div><div>模型</div><div>依赖关系</div><div>技能 / 工具</div>
+    </div>
+    ${AGENTS.map((a, i) => `
+      <div class="table-row">
+        <div class="agent-name-cell">
+          <div class="agent-avatar" style="background:${a.color}20;color:${a.color};width:28px;height:28px;font-size:12px">${a.avatar}</div>
+          <div><div style="font-size:13px;font-weight:600">${a.name}</div><div style="font-size:11px;color:var(--text2)">${a.role}</div></div>
+        </div>
+        <div style="font-size:12.5px;color:var(--text2)">${a.task.substring(0,80)}${a.task.length>80?'…':''}</div>
+        <div><span class="tag" style="font-size:11px">${a.model}</span></div>
+        <div style="font-size:12px;color:var(--text2)">${i===0?'无（首环节）':i===4?'依赖 #4（RCA）':i===2?'依赖 #2（生图）':i===3?'依赖 #3（质检，流式）':'依赖 #1（评测集）'}</div>
+        <div class="skill-tags">${a.skills.slice(0,3).map(s=>`<span class="tag">${s}</span>`).join('')}</div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function confirmAndStart() {
+  document.getElementById('tab-2').querySelector('.step-num').innerHTML = '<span class="step-check">✓</span>';
+  switchPhase(3);
+}
+
+// ════════════════════════════════════════════════════
+// PHASE 3: KANBAN
+// ════════════════════════════════════════════════════
+function renderKanban(filter='all') {
+  const board = document.getElementById('kanbanBoard');
+  const cols = { pending: [], running: [], review: [], done: [] };
+  AGENTS.forEach(a => {
+    if (filter === 'all' || a.status === filter) cols[a.status]?.push(a);
+  });
+
+  board.innerHTML = ['pending','running','review','done'].map(status => {
+    const cfg = statusConfig[status];
+    const agents = cols[status] || [];
+    return `
+      <div class="kanban-col">
+        <div class="col-header">
+          <div class="col-dot" style="background:${cfg.dotColor}"></div>
+          <span class="col-title">${cfg.label}</span>
+          <span class="col-count">${agents.length}</span>
+        </div>
+        ${agents.map(a => renderCard(a)).join('')}
+        ${agents.length===0?`<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px;border:1px dashed var(--border);border-radius:8px">暂无</div>`:''}
+      </div>
+    `;
+  }).join('');
+}
+
+function renderCard(a) {
+  const cfg = statusConfig[a.status];
+  return `
+    <div class="kanban-card ${currentAgentId===a.id?'active-card':''}" onclick="openAgent('${a.id}')">
+      ${a.alert?`<div class="card-alert">!</div>`:''}
+      <div class="card-top">
+        <div class="card-agent-avatar" style="background:${a.color}20;color:${a.color}">${a.avatar}</div>
+        <div class="card-info">
+          <div class="card-title">${a.fullName}</div>
+          <div class="card-subtitle">${a.role}</div>
+        </div>
+      </div>
+      <div class="card-desc">${a.task.substring(0,72)}…</div>
+      <div class="card-progress">
+        <div class="progress-meta"><span>${cfg.label}</span><span>${a.progress}%</span></div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar" style="width:${a.progress}%;background:${cfg.dotColor}"></div>
+        </div>
+      </div>
+      <div class="card-footer">
+        <span class="card-model">${a.model.split('-').slice(-2).join('-')}</span>
+        ${a.issues.length>0?`<span class="badge badge-amber" style="font-size:10px">⚠ ${a.issues.length}个问题</span>`:''}
+        <span class="card-time">${a.lastUpdate}</span>
+      </div>
+    </div>
+  `;
+}
+
+function filterKanban(val, el) {
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderKanban(val);
+}
+
+// ════════════════════════════════════════════════════
+// AGENT PANEL
+// ════════════════════════════════════════════════════
+function openAgent(id) {
+  currentAgentId = id;
+  currentPanelTab = 'task';
+  const a = AGENTS.find(x=>x.id===id);
+  document.getElementById('agent-panel').classList.add('open');
+  document.getElementById('panelAvatar').textContent = a.avatar;
+  document.getElementById('panelAvatar').style.background = `${a.color}30`;
+  document.getElementById('panelAvatar').style.color = a.color;
+  document.getElementById('panelName').textContent = a.fullName;
+  document.getElementById('panelRole').textContent = a.role;
+  renderPanelTab('task', a);
+  renderKanban();
+  // Steer buttons
+  const cfg = statusConfig[a.status];
+  document.getElementById('steerButtons').innerHTML = `
+    <span style="font-size:11px;color:var(--text3);padding:2px 4px">快捷引导：</span>
+    <div class="steer-btn" onclick="quickSteer('${id}','加快进度')">⚡ 加快进度</div>
+    <div class="steer-btn" onclick="quickSteer('${id}','输出当前进展摘要')">📊 进展摘要</div>
+    <div class="steer-btn" onclick="quickSteer('${id}','暂停并等待确认')">⏸ 暂停</div>
+    <div class="steer-btn" onclick="quickSteer('${id}','列出当前遇到的问题')">❗ 问题列表</div>
+  `;
+}
+
+function closePanel() {
+  document.getElementById('agent-panel').classList.remove('open');
+  currentAgentId = null;
+  renderKanban();
+}
+
+function switchPanelTab(tab, el) {
+  currentPanelTab = tab;
+  document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  const a = AGENTS.find(x=>x.id===currentAgentId);
+  if (a) renderPanelTab(tab, a);
+}
+
+function renderPanelTab(tab, a) {
+  const body = document.getElementById('panelBody');
+  if (tab === 'task') {
+    const cfg = statusConfig[a.status];
+    body.innerHTML = `
+      <div class="panel-section">
+        <div class="panel-section-title">任务状态</div>
+        <div class="info-row"><span class="label">状态</span><span class="status-badge ${cfg.badgeClass}">${cfg.label}</span></div>
+        <div class="info-row"><span class="label">进度</span><div style="flex:1"><div class="progress-bar-wrap"><div class="progress-bar" style="width:${a.progress}%;background:${cfg.dotColor}"></div></div></div><span style="font-size:12px;margin-left:8px">${a.progress}%</span></div>
+        <div class="info-row"><span class="label">分支</span><span class="value" style="font-family:monospace;font-size:12px">${a.branch}</span></div>
+        <div class="info-row"><span class="label">最近更新</span><span class="value">${a.lastUpdate}</span></div>
+      </div>
+      <div class="panel-section">
+        <div class="panel-section-title">任务描述</div>
+        <div style="font-size:13px;line-height:1.7;color:var(--text2)">${a.task}</div>
+      </div>
+      <div class="panel-section">
+        <div class="panel-section-title">验收标准</div>
+        <div style="font-size:13px;line-height:1.7;color:var(--text2)">${a.acceptance}</div>
+      </div>
+      <div class="panel-section">
+        <div class="panel-section-title">所需上下文</div>
+        ${a.contextNeeds.map(c=>`<div class="info-row" style="gap:6px"><span style="color:var(--text3)">•</span><span style="font-size:12.5px;color:var(--text2)">${c}</span></div>`).join('')}
+      </div>
+      ${a.issues.length>0?`
+      <div class="panel-section">
+        <div class="panel-section-title">当前问题</div>
+        ${a.issues.map(issue=>`<div class="issue-item"><span>⚠</span><span>${issue}</span></div>`).join('')}
+      </div>`:''}
+      <div class="panel-section">
+        <div class="panel-section-title">技能 / 工具</div>
+        <div class="skill-tags" style="margin-top:4px">${a.skills.map(s=>`<span class="tag">${s}</span>`).join('')}</div>
+      </div>
+    `;
+  } else if (tab === 'convo') {
+    if (a.conversations.length === 0) {
+      body.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text3);font-size:13px">Agent 尚未启动，暂无对话记录</div>`;
+      return;
+    }
+    body.innerHTML = `<div class="panel-convo">${a.conversations.map(c=>`
+      <div class="panel-msg ${c.role}">
+        <div class="msg-role">${c.role==='user'?'👤 用户':'🤖 '+a.name+' Agent'} · ${c.time}</div>
+        <div class="msg-text">${c.text}</div>
+      </div>
+    `).join('')}</div>`;
+    body.scrollTop = body.scrollHeight;
+  } else if (tab === 'claude') {
+    body.innerHTML = `
+      <div class="panel-section">
+        <div class="panel-section-title">Claude.md 内容</div>
+        <div class="code-block" style="margin-top:4px">${escapeHtml(a.claudeMd)}</div>
+      </div>
+    `;
+  } else if (tab === 'system') {
+    body.innerHTML = `
+      <div class="panel-section">
+        <div class="panel-section-title">系统提示词</div>
+        <div style="font-size:13px;line-height:1.7;color:var(--text2);white-space:pre-wrap">${a.systemPrompt}</div>
+      </div>
+      <div class="panel-section">
+        <div class="panel-section-title">模型配置</div>
+        <div class="info-row"><span class="label">模型</span><span class="tag">${a.model}</span></div>
+        <div class="info-row"><span class="label">Temperature</span><span class="value">0.3</span></div>
+        <div class="info-row"><span class="label">Max tokens</span><span class="value">8192</span></div>
+        <div class="info-row"><span class="label">工具</span><span class="value">${a.skills.slice(0,2).join(', ')} 等</span></div>
+      </div>
+    `;
+  }
+}
+
+function sendPanelMsg() {
+  const input = document.getElementById('panelChatInput');
+  const text = input.value.trim();
+  if (!text || !currentAgentId) return;
+  const a = AGENTS.find(x=>x.id===currentAgentId);
+  a.conversations.push({ role:'user', text, time: new Date().toLocaleTimeString('zh',{hour:'2-digit',minute:'2-digit'}) });
+  setTimeout(() => {
+    a.conversations.push({ role:'agent', text: `收到你的指令：「${text}」\n\n我将根据你的调整更新执行方向，稍后反馈进展。`, time: new Date().toLocaleTimeString('zh',{hour:'2-digit',minute:'2-digit'}) });
+    if (currentPanelTab === 'convo') renderPanelTab('convo', a);
+  }, 600);
+  input.value = '';
+  if (currentPanelTab === 'convo') renderPanelTab('convo', a);
+}
+
+function quickSteer(agentId, text) {
+  document.getElementById('panelChatInput').value = text;
+  sendPanelMsg();
+  // Switch to convo tab
+  const convoTab = document.querySelector('.panel-tab:nth-child(2)');
+  if (convoTab) { switchPanelTab('convo', convoTab); }
+}
+
+// ════════════════════════════════════════════════════
+// PHASE 4: VERIFY
+// ════════════════════════════════════════════════════
+function renderVerify() {
+  // Result grid
+  const grid = document.getElementById('resultGrid');
+  grid.innerHTML = AGENTS.map(a => {
+    const cfg = statusConfig[a.status];
+    return `
+      <div class="result-card" onclick="openAgent('${a.id}');switchPhase(3)" style="cursor:pointer">
+        <div class="rc-header">
+          <div class="agent-avatar" style="background:${a.color}20;color:${a.color};width:24px;height:24px;font-size:11px">${a.avatar}</div>
+          <span class="rc-title">${a.name}</span>
+        </div>
+        <div class="rc-status"><span class="status-badge ${cfg.badgeClass}">${cfg.label}</span></div>
+        ${a.prNum?`<div class="rc-pr">${a.prNum}: ${a.prTitle?.substring(0,30)}…</div>`:`<div style="font-size:11.5px;color:var(--text3)">PR 未提交</div>`}
+        <div class="rc-issues">${a.issues.length>0?a.issues.map(i=>`<div class="issue-item"><span>•</span>${i}</div>`).join(''):'<span style="color:var(--green);font-size:11.5px">✓ 无问题</span>'}</div>
+      </div>
+    `;
+  }).join('');
+
+  // PR list
+  const prs = AGENTS.filter(a => a.prNum);
+  document.getElementById('prList').innerHTML = prs.map(a => {
+    const cfg = statusConfig[a.prStatus] || statusConfig[a.status];
+    return `
+      <div class="pr-item">
+        <div class="agent-avatar" style="background:${a.color}20;color:${a.color};width:24px;height:24px;font-size:10px">${a.avatar}</div>
+        <span class="pr-num">${a.prNum}</span>
+        <span class="pr-title">${a.prTitle}</span>
+        <span class="status-badge ${cfg.badgeClass}">${cfg.label}</span>
+      </div>
+    `;
+  }).join('');
+
+  // Issue list
+  const allIssues = AGENTS.flatMap(a => a.issues.map(i => ({ agent: a.name, issue: i, color: a.color })));
+  document.getElementById('issueList').innerHTML = allIssues.length === 0
+    ? '<div style="color:var(--green);font-size:13px">✓ 暂无问题</div>'
+    : allIssues.map(i => `
+        <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:7px;margin-bottom:8px">
+          <span style="font-size:13px;color:${i.color};font-weight:600">${i.agent}</span>
+          <span style="font-size:12.5px;color:var(--amber)">⚠ ${i.issue}</span>
+        </div>
+      `).join('');
+
+  // Verify chat
+  const container = document.getElementById('verifyMessages');
+  if (container.children.length === 0 && verifyMsgIdx === 0) {
+    setTimeout(() => {
+      appendChatMsg(container, VERIFY_CHAT_SCRIPT[verifyMsgIdx++]);
+    }, 500);
+  }
+}
+
+function sendVerifyMsg() {
+  const input = document.getElementById('verifyChatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  const container = document.getElementById('verifyMessages');
+  appendChatMsg(container, { role:'user', text, time: new Date().toLocaleTimeString('zh',{hour:'2-digit',minute:'2-digit'}) });
+  input.value = '';
+  setTimeout(() => {
+    appendChatMsg(container, {
+      role: 'agent',
+      text: `收到你的问题：「${text}」\n\n基于当前各 Agent 的产出数据，我的分析如下：\n\n主要需要关注的是 Agent #3（质检）发现的场景图文字截断问题，这是系统性的 Prompt 设计缺陷，需要 Agent #5（提示词调优）在下一轮优先处理。\n\n建议在当前 RCA 分析完成后，立即进入第二轮优化循环。`,
+      time: new Date().toLocaleTimeString('zh',{hour:'2-digit',minute:'2-digit'})
+    });
+  }, 800);
+}
+
+// ════════════════════════════════════════════════════
+// UTILS
+// ════════════════════════════════════════════════════
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

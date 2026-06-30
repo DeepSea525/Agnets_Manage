@@ -227,6 +227,9 @@ app.patch('/api/camera', (req, res) => {
 
 app.get('/api/state', (req, res) => res.json(state));
 
+// Mock mode — fully client-side demo, no PTY / no persistence
+app.get('/mock', (req, res) => res.sendFile(path.join(__dirname, 'public', 'mock.html')));
+
 // Open native macOS Finder folder picker
 app.get('/api/pick-folder', (req, res) => {
   try {

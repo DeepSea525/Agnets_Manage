@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Canvas · Mock 演示</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="mock.css">
+</head>
+<body class="mock-body">
+
+  <!-- ── Header ── -->
+  <div id="header" style="display:flex">
+    <span class="header-logo">⬡ <span>Agent Canvas</span> <em class="mock-tag">Mock</em></span>
+    <span class="project-badge">AI 生图效果优化闭环 v1.0</span>
+
+    <!-- 阶段指示 -->
+    <nav class="phase-stepper">
+      <div class="phase-step active" data-phase="chat"><span class="ps-num">1</span> 需求沟通</div>
+      <span class="ps-arrow">→</span>
+      <div class="phase-step" data-phase="exec"><span class="ps-num">2</span> 执行中</div>
+      <span class="ps-arrow">→</span>
+      <div class="phase-step" data-phase="verify"><span class="ps-num">3</span> 验收合并</div>
+    </nav>
+
+    <div class="header-actions">
+      <button class="header-btn header-btn-ghost" id="btn-reset-view">⌖ 重置视图</button>
+      <button class="header-btn" id="btn-verify" disabled>进入验收 →</button>
+      <a class="header-btn header-btn-ghost" href="/">← 真实模式</a>
+    </div>
+  </div>
+
+  <!-- ── Canvas ── -->
+  <div id="canvas-container">
+    <div id="canvas"></div>
+  </div>
+
+  <!-- ── Worker Agent 面板 (右侧滑入) ── -->
+  <div id="mock-agent-panel">
+    <div class="mock-panel-header">
+      <div class="mph-left">
+        <div class="mph-avatar" id="mph-avatar">A</div>
+        <div class="mph-info">
+          <span id="mph-name">Agent</span>
+          <span id="mph-role"></span>
+        </div>
+        <span id="mph-badge" class="status-badge badge-not-launched">● 未启动</span>
+      </div>
+      <div class="mph-right">
+        <button class="tp-btn tp-btn-close" id="mph-close-btn" title="关闭">✕</button>
+      </div>
+    </div>
+    <div class="mock-panel-tabs">
+      <div class="panel-tab active" data-tab="task">任务详情</div>
+      <div class="panel-tab" data-tab="convo">对话记录</div>
+      <div class="panel-tab" data-tab="claude">Claude.md</div>
+      <div class="panel-tab" data-tab="system">系统提示词</div>
+      <div class="panel-tab" data-tab="tools">工具箱</div>
+    </div>
+    <div class="mock-panel-body" id="mock-panel-body"></div>
+    <div class="steer-buttons" id="steer-buttons"></div>
+    <div class="mock-chat-input">
+      <textarea id="mock-chat-textarea" placeholder="引导或调整 Agent 工作方向... (Enter 发送, Shift+Enter 换行)" rows="1"></textarea>
+      <button class="btn btn-primary" id="mock-chat-send">发送</button>
+    </div>
+  </div>
+
+  <!-- ── 主 Agent 面板 (右侧滑入) ── -->
+  <div id="mock-main-panel">
+    <div class="mock-panel-header">
+      <div class="mph-left">
+        <div class="mph-avatar mph-avatar-main" id="mph-main-avatar">M</div>
+        <div class="mph-info">
+          <span id="mph-main-name">主协调 Agent</span>
+          <span id="mph-main-role">需求拆解与分工规划 · 校验评估</span>
+        </div>
+        <span class="status-badge badge-launched" id="mph-main-badge">● 活跃</span>
+      </div>
+      <div class="mph-right">
+        <button class="tp-btn tp-btn-close" id="mph-main-close-btn" title="关闭">✕</button>
+      </div>
+    </div>
+    <div class="mock-main-layout">
+      <div class="mock-main-chat">
+        <div class="chat-messages" id="main-chat-messages"></div>
+        <div class="chat-input-area">
+          <div class="cta-bar">
+            <span class="cta-hint" id="main-chat-hint">与主 Agent 沟通需求，确认后生成分工方案</span>
+            <button class="btn btn-success hidden" id="btn-generate-plan">确认方案 → 进入执行</button>
+          </div>
+          <div class="chat-input-row">
+            <textarea class="chat-input" id="main-chat-input" placeholder="描述项目目标或补充需求... (Enter 发送)" rows="1"></textarea>
+            <button class="btn btn-primary" id="main-chat-send">发送</button>
+          </div>
+        </div>
+      </div>
+      <div class="mock-main-tasks">
+        <div class="task-panel-header">
+          <span class="title">📋 分工草案</span>
+          <span class="badge badge-purple" id="task-count">0 个 Agent</span>
+        </div>
+        <div class="task-list" id="task-list">
+          <div class="task-empty" data-empty="1">与主 Agent 沟通后，这里会自动生成分工草案</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 验收 overlay ── -->
+  <div id="mock-verify-overlay">
+    <div class="verify-shell">
+      <div class="verify-head">
+        <h2>验收合并</h2>
+        <button class="tp-btn tp-btn-close" id="verify-close-btn" title="返回画布">✕</button>
+      </div>
+      <div class="verify-body">
+        <div class="verify-left">
+          <div class="verify-section">
+            <div class="section-title">📦 各 Agent 产出结果</div>
+            <div class="result-grid" id="result-grid"></div>
+          </div>
+          <div class="verify-section">
+            <div class="section-title">🔀 PR 合并状态</div>
+            <div class="pr-list" id="pr-list"></div>
+          </div>
+          <div class="verify-section">
+            <div class="section-title">⚠️ 发现的问题</div>
+            <div id="issue-list"></div>
+          </div>
+        </div>
+        <div class="verify-right">
+          <div class="verify-chat-head">
+            <div class="mph-avatar mph-avatar-main">M</div>
+            <div>
+              <div class="vc-name">主协调 Agent — 验收评估</div>
+              <div class="vc-role">评估各 Agent 产出，定位问题 Agent</div>
+            </div>
+          </div>
+          <div class="chat-messages" id="verify-chat-messages"></div>
+          <div class="chat-input-area">
+            <div class="chat-input-row">
+              <textarea class="chat-input" id="verify-chat-input" placeholder="要求主 Agent 深入分析某个问题... (Enter 发送)" rows="1"></textarea>
+              <button class="btn btn-primary" id="verify-chat-send">发送</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Zoom indicator / Help hint ── -->
+  <div id="zoom-indicator"></div>
+  <div id="help-hint">拖拽平移 · 滚轮缩放 · 点击卡片进入对话 · 主 Agent 负责需求沟通与校验评估</div>
+
+  <script src="mock.js"></script>
+</body>
+</html>
